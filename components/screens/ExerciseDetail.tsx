@@ -2,6 +2,7 @@
 import React from "react";
 import { useApp } from "../app-context";
 import { TOK, TYPE, Tnum, ScreenHeader, Card, EmptyState, I, fmtW, epley1rm } from "@/lib/design";
+import { guideFor } from "@/lib/exercise-guide";
 
 type ExSet = {
   id: string;
@@ -18,7 +19,7 @@ export default function ExerciseDetail() {
   const { db, params, exMap, accent, goto } = useApp();
   const exId = params.exerciseId;
   const ex = exId ? exMap[exId] : undefined;
-  const [tab, setTab] = React.useState<"history" | "charts">("history");
+  const [tab, setTab] = React.useState<"guide" | "history" | "charts">("guide");
   const [groups, setGroups] = React.useState<SessionGroup[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -62,6 +63,7 @@ export default function ExerciseDetail() {
 
   if (!ex) return <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Exercise not found.</div>;
 
+  const guide = guideFor(ex.name);
   const chartData = [...groups].reverse().filter((g) => g.e1rm > 0).map((g, i) => ({ x: i, y: g.e1rm }));
 
   return (
@@ -69,25 +71,31 @@ export default function ExerciseDetail() {
       <ScreenHeader back onBack={() => goto("library")} title="" />
       <div style={{ padding: "0 16px 16px" }}>
         <div style={{ ...TYPE.h1, color: TOK.text }}>{ex.name}</div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
           <span style={tag}>{ex.primary_muscle}</span>
+          {guide?.secondary.map((m) => (
+            <span key={m} style={{ ...tag, color: TOK.dim }}>{m}</span>
+          ))}
           <span style={tag}>{ex.category[0].toUpperCase() + ex.category.slice(1)}</span>
         </div>
       </div>
 
       <div style={{ display: "flex", borderBottom: `1px solid ${TOK.border}`, padding: "0 16px", gap: 24 }}>
-        {(["history", "charts"] as const).map((t) => {
+        {(["guide", "history", "charts"] as const).map((t) => {
           const sel = tab === t;
+          const label = t === "guide" ? "How to" : t === "history" ? "History" : "Charts";
           return (
             <button key={t} onClick={() => setTab(t)} style={{ background: "transparent", border: "none", cursor: "pointer", padding: "12px 0", position: "relative", fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: sel ? TOK.text : TOK.dim, letterSpacing: "-0.01em" }}>
-              {t === "history" ? "History" : "Charts"}
+              {label}
               {sel && <span style={{ position: "absolute", bottom: -1, left: 0, right: 0, height: 2, background: accent.hex, borderRadius: 999 }} />}
             </button>
           );
         })}
       </div>
 
-      {loading ? (
+      {tab === "guide" ? (
+        <GuideTab name={ex.name} muscle={ex.primary_muscle} accentHex={accent.hex} />
+      ) : loading ? (
         <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Loading…</div>
       ) : groups.length === 0 ? (
         <EmptyState icon={<I.History size={20} />} title="No history yet" description="Log this exercise in a workout and it'll show up here." />
@@ -134,6 +142,37 @@ export default function ExerciseDetail() {
 }
 
 const tag: React.CSSProperties = { padding: "4px 10px", borderRadius: 999, background: TOK.surface, color: TOK.muted, fontSize: 11, fontWeight: 600, letterSpacing: "-0.01em" };
+
+function GuideTab({ name, muscle, accentHex }: { name: string; muscle: string; accentHex: string }) {
+  const guide = guideFor(name);
+  if (!guide) {
+    return (
+      <div style={{ padding: "20px 16px", color: TOK.muted, fontSize: 13, lineHeight: 1.6 }}>
+        No written guide for <span style={{ color: TOK.text }}>{name}</span> yet. It targets{" "}
+        <span style={{ color: TOK.text }}>{muscle}</span> — focus on a full range of motion and a controlled tempo.
+      </div>
+    );
+  }
+  return (
+    <div style={{ padding: "16px 16px 8px" }}>
+      <div style={{ ...TYPE.col, color: TOK.dim, marginBottom: 12 }}>How to perform</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {guide.steps.map((s, i) => (
+          <div key={i} className="gym-fade" style={{ display: "flex", gap: 12, alignItems: "flex-start", animationDelay: `${i * 70}ms` }}>
+            <div style={{ width: 24, height: 24, borderRadius: 999, background: `${accentHex}22`, color: accentHex, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{i + 1}</div>
+            <div style={{ ...TYPE.body, color: TOK.text, fontWeight: 500, lineHeight: 1.5, paddingTop: 2 }}>{s}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ ...TYPE.col, color: TOK.dim, margin: "22px 0 10px" }}>Form cues</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {guide.cues.map((c) => (
+          <div key={c} style={{ padding: "8px 12px", background: TOK.surface, borderRadius: 10, fontSize: 12, color: TOK.text, fontWeight: 500 }}>{c}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function LineChart({ data, accentHex, width = 322, height = 120 }: { data: { x: number; y: number }[]; accentHex: string; width?: number; height?: number }) {
   const pad = { l: 32, r: 8, t: 12, b: 22 };
