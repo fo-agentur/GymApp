@@ -410,7 +410,7 @@ export function Phone({ children, bg = TOK.bg, tabBar, hideStatusBar }: { childr
     <div className="phone" style={{ background: bg, color: TOK.text }}>
       <div className="phone-dynamic-island" />
       {!hideStatusBar && <PhoneStatusBar />}
-      <div style={{ position: "absolute", inset: hideStatusBar ? 0 : "47px 0 0 0", bottom: 0, display: "flex", flexDirection: "column", background: bg }}>
+      <div className="phone-scroll-area" style={{ position: "absolute", inset: hideStatusBar ? 0 : "47px 0 0 0", bottom: 0, display: "flex", flexDirection: "column", background: bg }}>
         <div style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>{children}</div>
         {tabBar}
       </div>
@@ -428,7 +428,7 @@ export function TabBar({ active, onChange, accent = ACCENT }: { active: TabId | 
     { id: "profile", label: "Profile", icon: I.User },
   ];
   return (
-    <div style={{ flexShrink: 0, borderTop: "1px solid #1a1a1a", background: TOK.surface, height: 64 + 24, paddingBottom: 24, display: "flex", alignItems: "flex-start" }}>
+    <div className="phone-tabbar" style={{ flexShrink: 0, borderTop: "1px solid #1a1a1a", background: TOK.surface, height: 64 + 24, paddingBottom: 24, display: "flex", alignItems: "flex-start" }}>
       {tabs.map((t) => {
         const sel = active === t.id;
         return (

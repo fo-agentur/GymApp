@@ -163,7 +163,8 @@ textarea {
   }
 }
 
-/* On small screens the phone becomes the whole viewport (real PWA feel) */
+/* On small screens the phone becomes the whole viewport — behave like a real
+   native app: drop the faux status bar / home indicator and respect safe areas. */
 @media (max-width: 480px) {
   .stage {
     padding: 0;
@@ -175,7 +176,19 @@ textarea {
     border-radius: 0;
     box-shadow: none;
   }
-  .phone-dynamic-island {
+  /* Remove the simulated iPhone chrome (clock, battery, dynamic island, home bar) */
+  .phone-dynamic-island,
+  .phone-status,
+  .home-indicator {
     display: none;
+  }
+  /* Content fills from the real safe area instead of leaving room for the faux bar */
+  .phone-scroll-area {
+    top: env(safe-area-inset-top) !important;
+  }
+  /* Bottom tab bar clears the real home indicator / browser toolbar */
+  .phone-tabbar {
+    height: auto !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
   }
 }

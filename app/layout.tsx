@@ -4,6 +4,12 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "GymApp",
   description: "The strength tracker that respects your data.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "GymApp",
+  },
 };
 
 export const viewport: Viewport = {
@@ -12,6 +18,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

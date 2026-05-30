@@ -221,7 +221,7 @@ export default function Workout() {
   return (
     <>
       <PhoneStatus />
-      <div style={{ position: "absolute", inset: "47px 0 0 0", display: "flex", flexDirection: "column", background: TOK.bg }}>
+      <div className="phone-scroll-area" style={{ position: "absolute", inset: "47px 0 0 0", display: "flex", flexDirection: "column", background: TOK.bg }}>
         {/* Top bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 8px 8px 6px" }}>
           <button
