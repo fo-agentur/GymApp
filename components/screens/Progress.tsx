@@ -4,6 +4,7 @@ import { useApp } from "../app-context";
 import { fetchSessions, fetchStats, type Stats } from "@/lib/data";
 import type { WorkoutSession } from "@/lib/supabase/types";
 import { TOK, TYPE, Tnum, ScreenHeader, SectionHeader, Card, MetricStat, EmptyState, I, fmtVol } from "@/lib/design";
+import { useMounted } from "@/lib/anim";
 
 export default function Progress() {
   const { db, accent, exMap } = useApp();
@@ -11,6 +12,7 @@ export default function Progress() {
   const [sessions, setSessions] = React.useState<WorkoutSession[]>([]);
   const [byMuscle, setByMuscle] = React.useState<{ muscle: string; kg: number }[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const mounted = useMounted();
 
   React.useEffect(() => {
     (async () => {
@@ -74,7 +76,7 @@ export default function Progress() {
                         <Tnum style={{ color: TOK.muted }}>{fmtVol(m.kg)} kg</Tnum>
                       </div>
                       <div style={{ height: 6, background: TOK.surface2, borderRadius: 4, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${(m.kg / max) * 100}%`, background: accent.hex, opacity: 0.85 - (i / Math.max(1, byMuscle.length)) * 0.4, borderRadius: 4 }} />
+                        <div style={{ height: "100%", width: mounted ? `${(m.kg / max) * 100}%` : "0%", background: accent.hex, opacity: 0.85 - (i / Math.max(1, byMuscle.length)) * 0.4, borderRadius: 4, transition: "width 750ms cubic-bezier(0.22,1,0.36,1)", transitionDelay: `${i * 45}ms` }} />
                       </div>
                     </div>
                   );

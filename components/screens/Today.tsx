@@ -4,6 +4,7 @@ import { useApp } from "../app-context";
 import { fetchRoutines, fetchSessions, type RoutineFull } from "@/lib/data";
 import type { WorkoutSession } from "@/lib/supabase/types";
 import { TOK, TYPE, Tnum, I, SectionHeader, SessionRow, EmptyState, fmtVol, hmm } from "@/lib/design";
+import { useCountUp } from "@/lib/anim";
 
 function datePill(iso: string) {
   const d = new Date(iso);
@@ -43,7 +44,7 @@ export default function Today() {
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 28px" }}>
       {/* Coach hero */}
-      <div style={{ background: TOK.surface, borderRadius: 24, padding: 22 }}>
+      <div className="gym-hero" style={{ background: TOK.surface, borderRadius: 24, padding: 22 }}>
         <div style={{ ...TYPE.eyebrow, color: TOK.dim }}>
           {greeting}, {username} · {now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
         </div>
@@ -62,6 +63,7 @@ export default function Today() {
               ? startWorkout({ routineId: suggested.id, name: suggested.name })
               : startWorkout({ routineId: null, name: "Quick Workout" })
           }
+          className="gym-glow"
           style={{
             width: "100%", height: 56, background: accent.hex, color: accent.ink, border: "none", borderRadius: 24,
             fontFamily: "inherit", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer",
@@ -83,10 +85,10 @@ export default function Today() {
       {/* This week */}
       <div style={{ ...TYPE.eyebrow, color: TOK.dim, margin: "26px 4px 14px" }}>This Week</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <Stat label="Sessions" value={thisWeek.length} />
-        <Stat label="Volume" value={fmtVol(weekVolume)} unit="kg" />
-        <Stat label="Working sets" value={weekSets} />
-        <Stat label="Routines" value={routines.length} />
+        <WeekStat label="Sessions" value={thisWeek.length} />
+        <WeekStat label="Volume" value={weekVolume} unit="kg" format={fmtVol} />
+        <WeekStat label="Working sets" value={weekSets} />
+        <WeekStat label="Routines" value={routines.length} />
       </div>
 
       {/* Recent */}
@@ -116,15 +118,18 @@ export default function Today() {
     </div>
   );
 
-  function Stat({ label, value, unit }: { label: string; value: React.ReactNode; unit?: string }) {
-    return (
-      <div style={{ padding: 14, background: TOK.surface, borderRadius: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-        <div style={{ ...TYPE.col, color: TOK.dim }}>{label}</div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 2 }}>
-          <Tnum style={{ fontSize: 22, fontWeight: 600, color: TOK.text, letterSpacing: "-0.02em" }}>{value}</Tnum>
-          {unit && <span style={{ fontSize: 11, color: TOK.muted }}>{unit}</span>}
-        </div>
+}
+
+function WeekStat({ label, value, unit, format }: { label: string; value: number; unit?: string; format?: (n: number) => string }) {
+  const v = useCountUp(value);
+  const shown = format ? format(Math.round(v)) : Math.round(v).toString();
+  return (
+    <div style={{ padding: 14, background: TOK.surface, borderRadius: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ ...TYPE.col, color: TOK.dim }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 2 }}>
+        <Tnum style={{ fontSize: 22, fontWeight: 600, color: TOK.text, letterSpacing: "-0.02em" }}>{shown}</Tnum>
+        {unit && <span style={{ fontSize: 11, color: TOK.muted }}>{unit}</span>}
       </div>
-    );
-  }
+    </div>
+  );
 }
