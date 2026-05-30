@@ -34,3 +34,7 @@ yarn-error.log*
 # design reference (local only)
 /_design
 .playwright-mcp/
+
+# exercise dataset (intermediate; regenerate via scripts/)
+exdb.json
+seed-exercises.sql

@@ -4,7 +4,7 @@ import type { Exercise } from "@/lib/supabase/types";
 import { TOK, Chip, SectionHeader, ExerciseRow, I, muscleTone, type Accent } from "@/lib/design";
 
 export const EQUIPMENT_FILTERS = ["All", "Barbell", "Dumbbell", "Machine", "Cable", "Bodyweight"];
-export const MUSCLE_ORDER = ["Chest", "Back", "Shoulders", "Quads", "Hamstrings", "Glutes", "Biceps", "Triceps", "Core", "Calves"];
+export const MUSCLE_ORDER = ["Chest", "Back", "Shoulders", "Quads", "Hamstrings", "Glutes", "Biceps", "Triceps", "Forearms", "Core", "Calves"];
 
 export function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);

@@ -3,6 +3,7 @@ import React from "react";
 import { useApp } from "../app-context";
 import { TOK, TYPE, Tnum, ScreenHeader, Card, EmptyState, I, fmtW, epley1rm } from "@/lib/design";
 import { guideFor } from "@/lib/exercise-guide";
+import { loadExerciseDB, type ExInfo } from "@/lib/exercise-db";
 
 type ExSet = {
   id: string;
@@ -22,6 +23,13 @@ export default function ExerciseDetail() {
   const [tab, setTab] = React.useState<"guide" | "history" | "charts">("guide");
   const [groups, setGroups] = React.useState<SessionGroup[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [info, setInfo] = React.useState<ExInfo | null>(null);
+
+  React.useEffect(() => {
+    const name = ex?.name;
+    if (!name) return;
+    loadExerciseDB().then((dbx) => setInfo(dbx[name] ?? null));
+  }, [ex?.name]);
 
   React.useEffect(() => {
     (async () => {
@@ -73,7 +81,7 @@ export default function ExerciseDetail() {
         <div style={{ ...TYPE.h1, color: TOK.text }}>{ex.name}</div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
           <span style={tag}>{ex.primary_muscle}</span>
-          {guide?.secondary.map((m) => (
+          {(info?.secondary ?? guide?.secondary ?? []).map((m) => (
             <span key={m} style={{ ...tag, color: TOK.dim }}>{m}</span>
           ))}
           <span style={tag}>{ex.category[0].toUpperCase() + ex.category.slice(1)}</span>
@@ -94,7 +102,7 @@ export default function ExerciseDetail() {
       </div>
 
       {tab === "guide" ? (
-        <GuideTab name={ex.name} muscle={ex.primary_muscle} accentHex={accent.hex} />
+        <GuideTab name={ex.name} muscle={ex.primary_muscle} accentHex={accent.hex} info={info} />
       ) : loading ? (
         <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Loading…</div>
       ) : groups.length === 0 ? (
@@ -143,33 +151,61 @@ export default function ExerciseDetail() {
 
 const tag: React.CSSProperties = { padding: "4px 10px", borderRadius: 999, background: TOK.surface, color: TOK.muted, fontSize: 11, fontWeight: 600, letterSpacing: "-0.01em" };
 
-function GuideTab({ name, muscle, accentHex }: { name: string; muscle: string; accentHex: string }) {
-  const guide = guideFor(name);
-  if (!guide) {
-    return (
-      <div style={{ padding: "20px 16px", color: TOK.muted, fontSize: 13, lineHeight: 1.6 }}>
-        No written guide for <span style={{ color: TOK.text }}>{name}</span> yet. It targets{" "}
-        <span style={{ color: TOK.text }}>{muscle}</span> — focus on a full range of motion and a controlled tempo.
-      </div>
-    );
-  }
+function GuideTab({ name, muscle, accentHex, info }: { name: string; muscle: string; accentHex: string; info: ExInfo | null }) {
+  const curated = guideFor(name);
+  const steps = info?.steps?.length ? info.steps : curated?.steps ?? [];
+  const cues = curated?.cues ?? [];
+  const [imgOk, setImgOk] = React.useState(true);
+
   return (
     <div style={{ padding: "16px 16px 8px" }}>
-      <div style={{ ...TYPE.col, color: TOK.dim, marginBottom: 12 }}>How to perform</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {guide.steps.map((s, i) => (
-          <div key={i} className="gym-fade" style={{ display: "flex", gap: 12, alignItems: "flex-start", animationDelay: `${i * 70}ms` }}>
-            <div style={{ width: 24, height: 24, borderRadius: 999, background: `${accentHex}22`, color: accentHex, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{i + 1}</div>
-            <div style={{ ...TYPE.body, color: TOK.text, fontWeight: 500, lineHeight: 1.5, paddingTop: 2 }}>{s}</div>
+      {info?.image && imgOk && (
+        <div className="gym-fade" style={{ marginBottom: 18, borderRadius: 14, overflow: "hidden", background: "#fff" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={info.image}
+            alt={name}
+            onError={() => setImgOk(false)}
+            style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }}
+          />
+        </div>
+      )}
+
+      {(info?.equipment || info?.level) && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          {info?.level && <span style={{ padding: "5px 11px", borderRadius: 999, background: `${accentHex}22`, color: accentHex, fontSize: 11, fontWeight: 600, textTransform: "capitalize" }}>{info.level}</span>}
+          {info?.equipment && <span style={{ padding: "5px 11px", borderRadius: 999, background: TOK.surface, color: TOK.muted, fontSize: 11, fontWeight: 600, textTransform: "capitalize" }}>{info.equipment}</span>}
+        </div>
+      )}
+
+      {steps.length === 0 ? (
+        <div style={{ color: TOK.muted, fontSize: 13, lineHeight: 1.6 }}>
+          This exercise targets <span style={{ color: TOK.text }}>{muscle}</span>. Focus on a full range of motion and a controlled tempo.
+        </div>
+      ) : (
+        <>
+          <div style={{ ...TYPE.col, color: TOK.dim, marginBottom: 12 }}>How to perform</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {steps.map((s, i) => (
+              <div key={i} className="gym-fade" style={{ display: "flex", gap: 12, alignItems: "flex-start", animationDelay: `${Math.min(i, 6) * 60}ms` }}>
+                <div style={{ width: 24, height: 24, borderRadius: 999, background: `${accentHex}22`, color: accentHex, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{i + 1}</div>
+                <div style={{ ...TYPE.body, color: TOK.text, fontWeight: 500, lineHeight: 1.5, paddingTop: 2 }}>{s}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div style={{ ...TYPE.col, color: TOK.dim, margin: "22px 0 10px" }}>Form cues</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {guide.cues.map((c) => (
-          <div key={c} style={{ padding: "8px 12px", background: TOK.surface, borderRadius: 10, fontSize: 12, color: TOK.text, fontWeight: 500 }}>{c}</div>
-        ))}
-      </div>
+        </>
+      )}
+
+      {cues.length > 0 && (
+        <>
+          <div style={{ ...TYPE.col, color: TOK.dim, margin: "22px 0 10px" }}>Form cues</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {cues.map((c) => (
+              <div key={c} style={{ padding: "8px 12px", background: TOK.surface, borderRadius: 10, fontSize: 12, color: TOK.text, fontWeight: 500 }}>{c}</div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

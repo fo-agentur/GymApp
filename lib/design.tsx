@@ -83,6 +83,7 @@ export const muscleTone = (m: string) =>
     Glutes: "linear-gradient(135deg, #525252, #1c1917)",
     Biceps: "linear-gradient(135deg, #4b5563, #18181b)",
     Triceps: "linear-gradient(135deg, #404040, #18181b)",
+    Forearms: "linear-gradient(135deg, #4b5563, #18181b)",
     Core: "linear-gradient(135deg, #44403c, #18181b)",
     Calves: "linear-gradient(135deg, #3f3f46, #1c1917)",
   } as Record<string, string>)[m] || "linear-gradient(135deg, #3f3f46, #18181b)");
