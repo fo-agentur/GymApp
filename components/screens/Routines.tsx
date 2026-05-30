@@ -22,6 +22,24 @@ export default function Routines() {
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 96, position: "relative" }}>
       <ScreenHeader large title="Routines" />
+
+      {/* Entry point to the exercise library + how-to guides */}
+      <div style={{ padding: "0 12px 8px" }}>
+        <button
+          onClick={() => goto("library")}
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, background: TOK.surface, border: "none", borderRadius: 12, padding: "14px 16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
+        >
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: `${accent.hex}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <I.Dumbbell size={18} color={accent.hex} w={2} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ ...TYPE.body, color: TOK.text, fontWeight: 600 }}>Exercise library</div>
+            <div style={{ fontSize: 12, color: TOK.dim, marginTop: 2 }}>How-to guides, muscles & your history</div>
+          </div>
+          <I.ChevR size={16} color={TOK.dim} />
+        </button>
+      </div>
+
       <SectionHeader title="My Routines" />
       {loading ? (
         <div style={{ padding: "8px 16px", color: TOK.dim, fontSize: 13 }}>Loading…</div>

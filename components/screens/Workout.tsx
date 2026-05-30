@@ -29,6 +29,7 @@ type WEx = {
   muscle: string;
   category: string;
   last: string | null;
+  rest: number;
   suggestion: { weight: number; reps: number; rpe: number };
   sets: WSet[];
 };
@@ -47,6 +48,7 @@ export default function Workout() {
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [finishing, setFinishing] = React.useState(false);
   const [ready, setReady] = React.useState(false);
+  const [restTimer, setRestTimer] = React.useState<{ total: number; remaining: number } | null>(null);
   const startedRef = React.useRef(false);
 
   // Create session + build exercises once.
@@ -63,7 +65,7 @@ export default function Workout() {
           for (const re of routine.routine_exercises) {
             const ex = exMap[re.exercise_id];
             if (!ex) continue;
-            built.push(await buildEx(ex, re.target_sets, re.target_reps_min, re.target_rpe));
+            built.push(await buildEx(ex, re.target_sets, re.target_reps_min, re.target_rpe, re.rest_seconds ?? 120));
           }
         }
       }
@@ -74,7 +76,7 @@ export default function Workout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, rpe: number | null = 8): Promise<WEx> {
+  async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, rpe: number | null = 8, rest = 120): Promise<WEx> {
     let suggestion = { weight: ex.category === "bodyweight" ? 0 : 20, reps: repsMin ?? 8, rpe: rpe ?? 8 };
     let last: string | null = null;
     try {
@@ -95,13 +97,33 @@ export default function Workout() {
       warmup: false,
       status: "planned" as const,
     }));
-    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, suggestion, sets };
+    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, rest, suggestion, sets };
   }
 
   React.useEffect(() => {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Rest countdown — ticks down each second; fires a cue + auto-hides at 0.
+  React.useEffect(() => {
+    if (!restTimer) return;
+    if (restTimer.remaining <= 0) {
+      notifyRestDone();
+      const t = setTimeout(() => setRestTimer(null), 4000);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => setRestTimer((r) => (r ? { ...r, remaining: r.remaining - 1 } : r)), 1000);
+    return () => clearTimeout(t);
+  }, [restTimer]);
+
+  function adjustRest(delta: number) {
+    setRestTimer((r) => {
+      if (!r) return r;
+      const remaining = Math.max(0, r.remaining + delta);
+      return { total: Math.max(r.total, remaining), remaining };
+    });
+  }
 
   const doneSets = exs.reduce((n, e) => n + e.sets.filter((s) => s.status === "done" && !s.warmup).length, 0);
   const totalPlanned = exs.reduce((n, e) => n + e.sets.length, 0);
@@ -131,6 +153,8 @@ export default function Workout() {
             : { ...e, sets: e.sets.map((s) => (s.localId === setId ? { ...s, ...vals, status: "done" as const, dbId: row.id } : s)) }
         )
       );
+      // Kick off the rest timer for this exercise.
+      setRestTimer({ total: ex.rest, remaining: ex.rest });
     } catch (err) {
       alert("Could not save set: " + (err as Error).message);
     }
@@ -254,6 +278,11 @@ export default function Workout() {
             </button>
           )}
         </div>
+
+        {/* Rest timer */}
+        {restTimer && (
+          <RestTimerBar timer={restTimer} accentHex={accent.hex} accentInk={accent.ink} onAdjust={adjustRest} onSkip={() => setRestTimer(null)} />
+        )}
 
         {/* Pinned action */}
         <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 12px 26px", background: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000 45%)", pointerEvents: "none" }}>
@@ -391,7 +420,7 @@ function LocalSetRow({ idx, set, accentHex, accentInk, onTap }: { idx: number; s
       <span className="tnum" style={{ color: done ? TOK.muted : TOK.dim, fontSize: 13, textAlign: "right" }}>{set.rpe != null ? `@${set.rpe}` : ""}</span>
       <span style={{ display: "flex", justifyContent: "flex-end" }}>
         {done ? (
-          <span style={{ width: 24, height: 24, borderRadius: 999, background: accentHex, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span className="gym-pop" style={{ width: 24, height: 24, borderRadius: 999, background: accentHex, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <I.Check size={14} color={accentInk} />
           </span>
         ) : (
@@ -555,6 +584,58 @@ function PlatesSheet({ open, onClose, weight, accentHex }: { open: boolean; onCl
       </div>
     </Sheet>
   );
+}
+
+// ── Rest timer bar ──────────────────────────────────────────────
+const timerBtn: React.CSSProperties = { flex: 1, height: 38, borderRadius: 12, background: TOK.surface, color: TOK.text, border: "none", fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent" };
+function RestTimerBar({ timer, accentHex, accentInk, onAdjust, onSkip }: { timer: { total: number; remaining: number }; accentHex: string; accentInk: string; onAdjust: (d: number) => void; onSkip: () => void }) {
+  const done = timer.remaining <= 0;
+  const pct = timer.total > 0 ? Math.max(0, Math.min(1, timer.remaining / timer.total)) : 0;
+  return (
+    <div style={{ position: "absolute", left: 12, right: 12, bottom: 96, zIndex: 35, background: TOK.surface2, borderRadius: 18, padding: "12px 14px 14px", boxShadow: "0 16px 50px rgba(0,0,0,0.6)", border: `1px solid ${done ? TOK.pr : "rgba(190,242,100,0.4)"}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: done ? TOK.pr : accentHex }}>
+          {done ? "Rest done — next set" : "Resting"}
+        </span>
+        <Tnum style={{ fontSize: 24, fontWeight: 600, color: TOK.text, letterSpacing: "-0.02em" }}>{mmss(Math.max(0, timer.remaining))}</Tnum>
+      </div>
+      <div style={{ height: 6, borderRadius: 999, background: TOK.bg, overflow: "hidden", marginBottom: 10 }}>
+        <div style={{ height: "100%", width: `${pct * 100}%`, background: done ? TOK.pr : accentHex, borderRadius: 999, transition: "width 1s linear" }} />
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={() => onAdjust(-15)} style={timerBtn}>−15s</button>
+        <button onClick={() => onAdjust(15)} style={timerBtn}>+15s</button>
+        <button onClick={onSkip} style={{ ...timerBtn, background: accentHex, color: accentInk }}>{done ? "Dismiss" : "Skip"}</button>
+      </div>
+    </div>
+  );
+}
+
+function notifyRestDone() {
+  try {
+    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([120, 60, 120]);
+  } catch {
+    /* not supported */
+  }
+  try {
+    const Ctx = (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.type = "sine";
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+    o.start();
+    o.stop(ctx.currentTime + 0.42);
+    o.onended = () => ctx.close();
+  } catch {
+    /* audio blocked */
+  }
 }
 
 function PhoneStatus() {

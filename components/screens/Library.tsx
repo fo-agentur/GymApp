@@ -20,7 +20,7 @@ export default function Library() {
 
   return (
     <div style={{ flex: 1, overflowY: "auto", position: "relative", paddingBottom: 96 }}>
-      <ScreenHeader large title="Exercises" />
+      <ScreenHeader large back onBack={() => goto("routines")} title="Exercises" />
       <div style={{ padding: "0 12px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 14px", height: 42, background: TOK.surface, borderRadius: 10 }}>
           <I.Search size={16} color={TOK.dim} />

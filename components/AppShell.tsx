@@ -128,7 +128,9 @@ export default function AppShell({ userId, username }: { userId: string; usernam
               ) : undefined
             }
           >
-            {body}
+            <div key={active} className="gym-fade" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+              {body}
+            </div>
           </Phone>
         )}
       </div>
