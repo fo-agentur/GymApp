@@ -30,6 +30,7 @@ type WEx = {
   muscle: string;
   category: string;
   last: string | null;
+  priorBest: number;
   rest: number;
   suggestion: { weight: number; reps: number; rpe: number };
   sets: WSet[];
@@ -51,6 +52,7 @@ export default function Workout() {
   const [ready, setReady] = React.useState(false);
   const [restTimer, setRestTimer] = React.useState<{ total: number; remaining: number } | null>(null);
   const [recentIds, setRecentIds] = React.useState<string[]>([]);
+  const [celebration, setCelebration] = React.useState<{ prs: { name: string; weight: number }[] } | null>(null);
   const startedRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -85,9 +87,11 @@ export default function Workout() {
   async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, rpe: number | null = 8, rest = 120): Promise<WEx> {
     let suggestion = { weight: ex.category === "bodyweight" ? 0 : 20, reps: repsMin ?? 8, rpe: rpe ?? 8 };
     let last: string | null = null;
+    let priorBest = 0;
     try {
       const perf = await fetchLastPerformance(db, ex.id, userId);
       if (perf && perf.best_weight != null) {
+        priorBest = perf.best_weight;
         const bump = (perf.best_rpe ?? 8) <= 8 && ex.category !== "bodyweight" ? 2.5 : 0;
         suggestion = { weight: perf.best_weight + bump, reps: perf.best_reps ?? repsMin ?? 8, rpe: 8 };
         last = `${fmtW(perf.best_weight)}kg × ${perf.best_reps ?? "—"}`;
@@ -103,7 +107,7 @@ export default function Workout() {
       warmup: false,
       status: "planned" as const,
     }));
-    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, rest, suggestion, sets };
+    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, priorBest, rest, suggestion, sets };
   }
 
   React.useEffect(() => {
@@ -201,6 +205,22 @@ export default function Workout() {
       duration_seconds: elapsed,
       notes: null,
     });
+    // PR detection: heaviest done set this session beats the prior best.
+    const prs: { name: string; weight: number }[] = [];
+    for (const e of exs) {
+      const top = Math.max(0, ...e.sets.filter((s) => s.status === "done" && !s.warmup).map((s) => s.weight ?? 0));
+      if (top > 0 && e.priorBest > 0 && top > e.priorBest) prs.push({ name: e.name, weight: top });
+    }
+    if (prs.length > 0) {
+      try {
+        if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 120]);
+      } catch {
+        /* unsupported */
+      }
+      setFinishing(false);
+      setCelebration({ prs });
+      return;
+    }
     goto("history");
   }
 
@@ -321,9 +341,47 @@ export default function Workout() {
         <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} label="Add exercise" title="">
           <ExercisePicker exercises={exercises} accent={accent} onPick={addExercise} recentIds={recentIds} />
         </Sheet>
+
+        {celebration && (
+          <PRCelebration prs={celebration.prs} accentHex={accent.hex} accentInk={accent.ink} onClose={() => goto("history")} />
+        )}
       </div>
       <div className="home-indicator" />
     </>
+  );
+}
+
+function PRCelebration({ prs, accentHex, accentInk, onClose }: { prs: { name: string; weight: number }[]; accentHex: string; accentInk: string; onClose: () => void }) {
+  const confetti = React.useMemo(
+    () => Array.from({ length: 26 }, (_, i) => ({
+      left: Math.random() * 100,
+      delay: Math.random() * 0.5,
+      dur: 1.6 + Math.random() * 1.2,
+      color: [accentHex, "#22c55e", "#fb923c", "#fafafa"][i % 4],
+      size: 6 + Math.random() * 6,
+    })),
+    [accentHex]
+  );
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.82)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, overflow: "hidden" }}>
+      {confetti.map((c, i) => (
+        <span key={i} style={{ position: "absolute", top: -20, left: `${c.left}%`, width: c.size, height: c.size, borderRadius: 2, background: c.color, animation: `gymConfetti ${c.dur}s ${c.delay}s ease-in forwards` }} />
+      ))}
+      <div className="gym-pop" style={{ fontSize: 56, marginBottom: 8 }}>🏆</div>
+      <div style={{ fontSize: 26, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>New PR{prs.length > 1 ? "s" : ""}!</div>
+      <div style={{ fontSize: 13, color: TOK.muted, marginTop: 4, marginBottom: 20 }}>You beat your previous best</div>
+      <div style={{ width: "100%", maxWidth: 300, display: "flex", flexDirection: "column", gap: 8 }}>
+        {prs.slice(0, 4).map((p, i) => (
+          <div key={i} className="gym-fade" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: TOK.surface, borderRadius: 12, animationDelay: `${i * 90}ms` }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: TOK.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 10 }}>{p.name}</span>
+            <Tnum style={{ fontSize: 15, fontWeight: 700, color: accentHex, flexShrink: 0 }}>{fmtW(p.weight)} kg</Tnum>
+          </div>
+        ))}
+      </div>
+      <button onClick={onClose} style={{ marginTop: 24, width: "100%", maxWidth: 300, height: 52, background: accentHex, color: accentInk, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
+        Let&apos;s go
+      </button>
+    </div>
   );
 }
 

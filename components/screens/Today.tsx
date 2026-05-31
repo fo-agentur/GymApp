@@ -41,6 +41,22 @@ export default function Today() {
 
   const estMin = suggested ? Math.max(20, suggested.routine_exercises.reduce((n, e) => n + e.target_sets * 3, 0)) : 0;
 
+  // Streak = consecutive calendar days (ending today or yesterday) with a workout.
+  const streak = (() => {
+    const days = new Set(sessions.map((s) => new Date(s.started_at).toDateString()));
+    if (days.size === 0) return 0;
+    const d = new Date();
+    // allow the streak to count even if today isn't trained yet
+    if (!days.has(d.toDateString())) d.setDate(d.getDate() - 1);
+    let n = 0;
+    while (days.has(d.toDateString())) {
+      n++;
+      d.setDate(d.getDate() - 1);
+    }
+    return n;
+  })();
+  const totalWorkouts = sessions.length;
+
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 28px" }}>
       {/* Coach hero */}
@@ -48,6 +64,19 @@ export default function Today() {
         <div style={{ ...TYPE.eyebrow, color: TOK.dim }}>
           {greeting}, {username} · {now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
         </div>
+        {!loading && (streak > 0 || totalWorkouts > 0) && (
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            {streak > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: `${accent.hex}1f` }}>
+                <span style={{ fontSize: 13 }}>🔥</span>
+                <Tnum style={{ fontSize: 12, fontWeight: 600, color: accent.hex }}>{streak}-day streak</Tnum>
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: TOK.surface2 }}>
+              <Tnum style={{ fontSize: 12, fontWeight: 600, color: TOK.muted }}>{totalWorkouts} workout{totalWorkouts === 1 ? "" : "s"}</Tnum>
+            </div>
+          </div>
+        )}
         <div style={{ fontSize: 28, fontWeight: 600, color: TOK.text, letterSpacing: "-0.02em", lineHeight: 1.05, marginTop: 12 }}>
           {suggested ? suggested.name : "Ready to train?"}
         </div>

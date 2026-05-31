@@ -139,6 +139,10 @@ textarea {
   0%, 100% { box-shadow: 0 0 0 0 rgba(190, 242, 100, 0.5); }
   50% { box-shadow: 0 0 0 6px rgba(190, 242, 100, 0); }
 }
+@keyframes gymConfetti {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(900px) rotate(540deg); opacity: 0; }
+}
 .gym-fade { animation: gymFade 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .gym-pop { animation: gymPop 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 
