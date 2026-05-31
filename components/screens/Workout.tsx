@@ -8,6 +8,7 @@ import {
   discardSession,
   fetchRoutine,
   fetchLastPerformance,
+  fetchRecentExerciseIds,
 } from "@/lib/data";
 import type { WorkoutSession, Exercise } from "@/lib/supabase/types";
 import { TOK, Tnum, I, Sheet, fmtW, mmss } from "@/lib/design";
@@ -49,7 +50,12 @@ export default function Workout() {
   const [finishing, setFinishing] = React.useState(false);
   const [ready, setReady] = React.useState(false);
   const [restTimer, setRestTimer] = React.useState<{ total: number; remaining: number } | null>(null);
+  const [recentIds, setRecentIds] = React.useState<string[]>([]);
   const startedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    fetchRecentExerciseIds(db).then(setRecentIds).catch(() => {});
+  }, [db]);
 
   // Create session + build exercises once.
   React.useEffect(() => {
@@ -313,7 +319,7 @@ export default function Workout() {
         <PlatesSheet open={platesOpen} onClose={() => setPlatesOpen(false)} weight={override?.weight ?? 100} accentHex={accent.hex} />
 
         <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} label="Add exercise" title="">
-          <ExercisePicker exercises={exercises} accent={accent} onPick={addExercise} />
+          <ExercisePicker exercises={exercises} accent={accent} onPick={addExercise} recentIds={recentIds} />
         </Sheet>
       </div>
       <div className="home-indicator" />

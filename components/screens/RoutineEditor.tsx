@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import { useApp } from "../app-context";
-import { fetchRoutine, createRoutine, updateRoutine, deleteRoutine, type NewRoutineEx } from "@/lib/data";
+import { fetchRoutine, createRoutine, updateRoutine, deleteRoutine, fetchRecentExerciseIds, type NewRoutineEx } from "@/lib/data";
 import { TOK, TYPE, Tnum, ScreenHeader, SectionHeader, Sheet, Btn, MiniStepper, I, muscleTone, mmss } from "@/lib/design";
 import ExercisePicker from "./ExercisePicker";
 
@@ -15,6 +15,11 @@ export default function RoutineEditor() {
   const [editing, setEditing] = React.useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [recentIds, setRecentIds] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    fetchRecentExerciseIds(db).then(setRecentIds).catch(() => {});
+  }, [db]);
   const [loaded, setLoaded] = React.useState(!routineId);
 
   React.useEffect(() => {
@@ -144,6 +149,7 @@ export default function RoutineEditor() {
         <ExercisePicker
           exercises={exercises}
           accent={accent}
+          recentIds={recentIds}
           onPick={(e) => {
             setItems((arr) => [...arr, { exercise_id: e.id, target_sets: 3, target_reps_min: 8, target_reps_max: 10, target_rpe: 8, rest_seconds: 120 }]);
             setPickerOpen(false);

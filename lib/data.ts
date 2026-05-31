@@ -43,6 +43,22 @@ export async function fetchExercises(db: DB): Promise<Exercise[]> {
   return data ?? [];
 }
 
+// Distinct exercise IDs the user has logged recently (most recent first).
+export async function fetchRecentExerciseIds(db: DB, limit = 8): Promise<string[]> {
+  const { data, error } = await db
+    .from("sets")
+    .select("exercise_id, completed_at")
+    .order("completed_at", { ascending: false })
+    .limit(300);
+  if (error) throw error;
+  const seen: string[] = [];
+  for (const r of data ?? []) {
+    if (!seen.includes(r.exercise_id)) seen.push(r.exercise_id);
+    if (seen.length >= limit) break;
+  }
+  return seen;
+}
+
 export async function createCustomExercise(
   db: DB,
   userId: string,

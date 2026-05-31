@@ -8,15 +8,20 @@ import { EQUIPMENT_FILTERS, MUSCLE_ORDER, cap } from "./ExercisePicker";
 export default function Library() {
   const { exercises, accent, goto, reloadExercises, db, userId } = useApp();
   const [query, setQuery] = React.useState("");
+  const [muscle, setMuscle] = React.useState("All");
   const [equip, setEquip] = React.useState("All");
   const [addOpen, setAddOpen] = React.useState(false);
 
   const filtered = exercises.filter((e) => {
+    if (muscle !== "All" && e.primary_muscle !== muscle) return false;
     if (equip !== "All" && cap(e.category) !== equip) return false;
     if (query && !e.name.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
   });
-  const grouped = MUSCLE_ORDER.map((m) => ({ muscle: m, items: filtered.filter((e) => e.primary_muscle === m) })).filter((g) => g.items.length > 0);
+  const grouped =
+    muscle === "All"
+      ? MUSCLE_ORDER.map((m) => ({ muscle: m, items: filtered.filter((e) => e.primary_muscle === m) })).filter((g) => g.items.length > 0)
+      : [{ muscle, items: filtered }];
 
   return (
     <div style={{ flex: 1, overflowY: "auto", position: "relative", paddingBottom: 96 }}>

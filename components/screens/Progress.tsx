@@ -5,12 +5,16 @@ import { fetchSessions, fetchStats, type Stats } from "@/lib/data";
 import type { WorkoutSession } from "@/lib/supabase/types";
 import { TOK, TYPE, Tnum, ScreenHeader, SectionHeader, Card, MetricStat, EmptyState, I, fmtVol } from "@/lib/design";
 import { useMounted } from "@/lib/anim";
+import MuscleMap from "../MuscleMap";
+import { statusLabel, heatColor, type MuscleGroup } from "@/lib/muscles";
 
 export default function Progress() {
   const { db, accent, exMap } = useApp();
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [sessions, setSessions] = React.useState<WorkoutSession[]>([]);
   const [byMuscle, setByMuscle] = React.useState<{ muscle: string; kg: number }[]>([]);
+  const [weeklySets, setWeeklySets] = React.useState<Partial<Record<MuscleGroup, number>>>({});
+  const [selMuscle, setSelMuscle] = React.useState<MuscleGroup | null>(null);
   const [loading, setLoading] = React.useState(true);
   const mounted = useMounted();
 
@@ -20,14 +24,23 @@ export default function Progress() {
         const [st, ss] = await Promise.all([fetchStats(db), fetchSessions(db)]);
         setStats(st);
         setSessions(ss);
-        const { data } = await db.from("sets").select("weight_kg,reps,is_warmup,exercise_id");
+        const { data } = await db.from("sets").select("weight_kg,reps,is_warmup,exercise_id,completed_at");
         const agg: Record<string, number> = {};
+        const weekAgg: Record<string, number> = {};
+        const weekStart = Date.now() - 7 * 24 * 3600 * 1000;
         for (const s of data ?? []) {
-          if (s.is_warmup || s.weight_kg == null || s.reps == null) continue;
+          if (s.is_warmup) continue;
           const muscle = exMap[s.exercise_id]?.primary_muscle ?? "Other";
-          agg[muscle] = (agg[muscle] ?? 0) + s.weight_kg * s.reps;
+          if (s.weight_kg != null && s.reps != null) {
+            agg[muscle] = (agg[muscle] ?? 0) + s.weight_kg * s.reps;
+          }
+          // weekly working-set count per muscle (for the body map)
+          if (s.completed_at && new Date(s.completed_at).getTime() >= weekStart) {
+            weekAgg[muscle] = (weekAgg[muscle] ?? 0) + 1;
+          }
         }
         setByMuscle(Object.entries(agg).map(([muscle, kg]) => ({ muscle, kg })).sort((a, b) => b.kg - a.kg));
+        setWeeklySets(weekAgg as Partial<Record<MuscleGroup, number>>);
       } finally {
         setLoading(false);
       }
@@ -62,6 +75,39 @@ export default function Progress() {
             <MetricStat label="Sets" value={stats!.totalSets.toLocaleString()} />
             <MetricStat label="Avg duration" value={stats!.avgDuration} unit="min" />
           </div>
+
+          {/* Muscle map — what you trained this week */}
+          <SectionHeader title="Trained This Week" />
+          <Card style={{ margin: "0 12px 22px", padding: "16px 12px 14px" }}>
+            <MuscleMap sets={weeklySets} selected={selMuscle} onSelect={(m) => setSelMuscle((p) => (p === m ? null : m))} />
+            {/* Selected muscle detail */}
+            {selMuscle ? (
+              (() => {
+                const n = weeklySets[selMuscle] ?? 0;
+                const st = statusLabel(n);
+                return (
+                  <div style={{ textAlign: "center", marginTop: 6 }}>
+                    <div style={{ ...TYPE.cardTitle, color: TOK.text }}>{selMuscle}</div>
+                    <div style={{ fontSize: 12, marginTop: 3 }}>
+                      <Tnum style={{ color: TOK.text, fontWeight: 600 }}>{n}</Tnum>
+                      <span style={{ color: TOK.muted }}> sets · </span>
+                      <span style={{ color: st.color, fontWeight: 600 }}>{st.text}</span>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div style={{ textAlign: "center", marginTop: 4, fontSize: 12, color: TOK.dim }}>Tap a muscle for details</div>
+            )}
+            {/* Legend */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 12 }}>
+              <span style={{ fontSize: 10, color: TOK.dim }}>Less</span>
+              {[0.05, 0.35, 0.65, 1].map((t, i) => (
+                <span key={i} style={{ width: 14, height: 10, borderRadius: 2, background: heatColor(t) }} />
+              ))}
+              <span style={{ fontSize: 10, color: TOK.dim }}>More</span>
+            </div>
+          </Card>
 
           {byMuscle.length > 0 && (
             <>
