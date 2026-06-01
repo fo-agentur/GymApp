@@ -55,7 +55,7 @@ export default function ExercisePicker({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search exercises…"
             autoCapitalize="none"
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: TOK.text, fontFamily: "inherit", fontSize: 14, fontWeight: 500 }}
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: TOK.text, fontFamily: "inherit", fontSize: 16, fontWeight: 500 }}
           />
           {query && (
             <button onClick={() => setQuery("")} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>

@@ -9,6 +9,10 @@ export default function Settings() {
   const [units, setUnits] = React.useState("metric");
   const [bar, setBar] = React.useState(20);
   const [rest, setRest] = React.useState(120);
+  const [tKcal, setTKcal] = React.useState(0);
+  const [tProtein, setTProtein] = React.useState(0);
+  const [tCarbs, setTCarbs] = React.useState(0);
+  const [tFat, setTFat] = React.useState(0);
   const [saved, setSaved] = React.useState(false);
 
   React.useEffect(() => {
@@ -18,11 +22,23 @@ export default function Settings() {
         setUnits(p.units);
         setBar(Number(p.bar_weight_kg));
         setRest(p.default_rest_seconds);
+        setTKcal(p.target_kcal ?? 0);
+        setTProtein(p.target_protein_g ?? 0);
+        setTCarbs(p.target_carbs_g ?? 0);
+        setTFat(p.target_fat_g ?? 0);
       }
     })();
   }, [db, userId]);
 
-  async function persist(patch: { units?: string; bar_weight_kg?: number; default_rest_seconds?: number }) {
+  async function persist(patch: {
+    units?: string;
+    bar_weight_kg?: number;
+    default_rest_seconds?: number;
+    target_kcal?: number;
+    target_protein_g?: number;
+    target_carbs_g?: number;
+    target_fat_g?: number;
+  }) {
     try {
       await updateProfile(db, userId, patch);
       setSaved(true);
@@ -50,6 +66,17 @@ export default function Settings() {
         <Row label="Default bar weight" sublabel="Used in the plate calculator" trailing={<MiniStepper value={bar} min={0} step={2.5} unit="kg" onChange={(v) => { setBar(v); persist({ bar_weight_kg: v }); }} />} />
         <Divider />
         <Row label="Default rest time" sublabel="Per new exercise" trailing={<MiniStepper value={rest} min={0} step={15} unit="s" onChange={(v) => { setRest(v); persist({ default_rest_seconds: v }); }} />} />
+      </Card>
+
+      <SectionHeader title="Nutrition targets" />
+      <Card style={{ margin: "0 12px 20px" }}>
+        <Row label="Daily calories" trailing={<MiniStepper value={tKcal} min={0} step={50} unit="kcal" onChange={(v) => { setTKcal(v); persist({ target_kcal: v }); }} />} />
+        <Divider />
+        <Row label="Protein" trailing={<MiniStepper value={tProtein} min={0} step={5} unit="g" onChange={(v) => { setTProtein(v); persist({ target_protein_g: v }); }} />} />
+        <Divider />
+        <Row label="Carbs" trailing={<MiniStepper value={tCarbs} min={0} step={5} unit="g" onChange={(v) => { setTCarbs(v); persist({ target_carbs_g: v }); }} />} />
+        <Divider />
+        <Row label="Fat" trailing={<MiniStepper value={tFat} min={0} step={5} unit="g" onChange={(v) => { setTFat(v); persist({ target_fat_g: v }); }} />} />
       </Card>
 
       <SectionHeader title="About" />

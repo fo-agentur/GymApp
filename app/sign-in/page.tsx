@@ -63,7 +63,7 @@ export default function SignInPage() {
     borderRadius: 12,
     color: TOK.text,
     fontFamily: "inherit",
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 500,
     letterSpacing: "-0.01em",
     outline: "none",

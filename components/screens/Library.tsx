@@ -29,7 +29,7 @@ export default function Library() {
       <div style={{ padding: "0 12px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 14px", height: 42, background: TOK.surface, borderRadius: 10 }}>
           <I.Search size={16} color={TOK.dim} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search exercises…" autoCapitalize="none" style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: TOK.text, fontFamily: "inherit", fontSize: 14, fontWeight: 500 }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search exercises…" autoCapitalize="none" style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: TOK.text, fontFamily: "inherit", fontSize: 16, fontWeight: 500 }} />
           {query && (
             <button onClick={() => setQuery("")} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, display: "flex" }}>
               <I.X size={14} color={TOK.dim} />
@@ -81,7 +81,7 @@ function AddExerciseSheet({ open, onClose, onCreate }: { open: boolean; onClose:
     <Sheet open={open} onClose={onClose} label="New exercise" title="Add a custom exercise">
       <div style={{ padding: "4px 20px 16px" }}>
         <div style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8 }}>Name</div>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Spoto Press" style={{ width: "100%", height: 48, padding: "0 14px", background: TOK.surface, border: "none", borderRadius: 10, color: TOK.text, fontFamily: "inherit", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Spoto Press" style={{ width: "100%", height: 48, padding: "0 14px", background: TOK.surface, border: "none", borderRadius: 10, color: TOK.text, fontFamily: "inherit", fontSize: 16, outline: "none", boxSizing: "border-box" }} />
         <div style={{ ...TYPE.col, color: TOK.dim, margin: "16px 0 8px" }}>Muscle</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {MUSCLE_ORDER.map((m) => (

@@ -9,9 +9,10 @@ import {
   fetchRoutine,
   fetchLastPerformance,
   fetchRecentExerciseIds,
+  fetchProfile,
 } from "@/lib/data";
 import type { WorkoutSession, Exercise } from "@/lib/supabase/types";
-import { TOK, Tnum, I, Sheet, fmtW, mmss } from "@/lib/design";
+import { TOK, Tnum, I, Sheet, fmtW, mmss, epley1rm } from "@/lib/design";
 import ExercisePicker from "./ExercisePicker";
 
 type WSet = {
@@ -30,7 +31,7 @@ type WEx = {
   muscle: string;
   category: string;
   last: string | null;
-  priorBest: number;
+  priorBest1rm: number;
   rest: number;
   suggestion: { weight: number; reps: number; rpe: number };
   sets: WSet[];
@@ -53,11 +54,19 @@ export default function Workout() {
   const [restTimer, setRestTimer] = React.useState<{ total: number; remaining: number } | null>(null);
   const [recentIds, setRecentIds] = React.useState<string[]>([]);
   const [celebration, setCelebration] = React.useState<{ prs: { name: string; weight: number }[] } | null>(null);
+  const [exitPrompt, setExitPrompt] = React.useState(false);
+  const [barWeight, setBarWeight] = React.useState(20);
   const startedRef = React.useRef(false);
 
   React.useEffect(() => {
     fetchRecentExerciseIds(db).then(setRecentIds).catch(() => {});
   }, [db]);
+
+  React.useEffect(() => {
+    fetchProfile(db, userId)
+      .then((p) => setBarWeight(p?.bar_weight_kg ?? 20))
+      .catch(() => {});
+  }, [db, userId]);
 
   // Create session + build exercises once.
   React.useEffect(() => {
@@ -87,11 +96,11 @@ export default function Workout() {
   async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, rpe: number | null = 8, rest = 120): Promise<WEx> {
     let suggestion = { weight: ex.category === "bodyweight" ? 0 : 20, reps: repsMin ?? 8, rpe: rpe ?? 8 };
     let last: string | null = null;
-    let priorBest = 0;
+    let priorBest1rm = 0;
     try {
       const perf = await fetchLastPerformance(db, ex.id, userId);
       if (perf && perf.best_weight != null) {
-        priorBest = perf.best_weight;
+        priorBest1rm = epley1rm(perf.best_weight ?? 0, perf.best_reps ?? 0);
         const bump = (perf.best_rpe ?? 8) <= 8 && ex.category !== "bodyweight" ? 2.5 : 0;
         suggestion = { weight: perf.best_weight + bump, reps: perf.best_reps ?? repsMin ?? 8, rpe: 8 };
         last = `${fmtW(perf.best_weight)}kg × ${perf.best_reps ?? "—"}`;
@@ -107,7 +116,7 @@ export default function Workout() {
       warmup: false,
       status: "planned" as const,
     }));
-    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, priorBest, rest, suggestion, sets };
+    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, priorBest1rm, rest, suggestion, sets };
   }
 
   React.useEffect(() => {
@@ -138,7 +147,7 @@ export default function Workout() {
   const doneSets = exs.reduce((n, e) => n + e.sets.filter((s) => s.status === "done" && !s.warmup).length, 0);
   const totalPlanned = exs.reduce((n, e) => n + e.sets.length, 0);
   const volume = exs.reduce(
-    (n, e) => n + e.sets.filter((s) => s.status === "done").reduce((m, s) => m + (s.weight ?? 0) * (s.reps ?? 0), 0),
+    (n, e) => n + e.sets.filter((s) => s.status === "done" && !s.warmup).reduce((m, s) => m + (s.weight ?? 0) * (s.reps ?? 0), 0),
     0
   );
 
@@ -205,11 +214,13 @@ export default function Workout() {
       duration_seconds: elapsed,
       notes: null,
     });
-    // PR detection: heaviest done set this session beats the prior best.
+    // PR detection: best estimated 1RM this session beats the prior best 1RM.
     const prs: { name: string; weight: number }[] = [];
     for (const e of exs) {
-      const top = Math.max(0, ...e.sets.filter((s) => s.status === "done" && !s.warmup).map((s) => s.weight ?? 0));
-      if (top > 0 && e.priorBest > 0 && top > e.priorBest) prs.push({ name: e.name, weight: top });
+      const doneSetsEx = e.sets.filter((s) => s.status === "done" && !s.warmup);
+      const sessionBest1rm = Math.max(0, ...doneSetsEx.map((s) => epley1rm(s.weight ?? 0, s.reps ?? 0)));
+      const top = Math.max(0, ...doneSetsEx.map((s) => s.weight ?? 0));
+      if (sessionBest1rm > e.priorBest1rm && e.priorBest1rm > 0) prs.push({ name: e.name, weight: top });
     }
     if (prs.length > 0) {
       try {
@@ -231,14 +242,33 @@ export default function Workout() {
     }
     if (doneSets === 0) {
       await discardSession(db, session.id);
-    } else {
-      await finishSession(db, session.id, {
-        total_volume_kg: Math.round(volume * 100) / 100,
-        total_sets: doneSets,
-        duration_seconds: elapsed,
-        notes: null,
-      });
+      goto("today");
+      return;
     }
+    // With logged sets, ask whether to save or discard.
+    setExitPrompt(true);
+  }
+
+  async function exitSave() {
+    if (!session) {
+      goto("today");
+      return;
+    }
+    await finishSession(db, session.id, {
+      total_volume_kg: Math.round(volume * 100) / 100,
+      total_sets: doneSets,
+      duration_seconds: elapsed,
+      notes: null,
+    });
+    goto("today");
+  }
+
+  async function exitDiscard() {
+    if (!session) {
+      goto("today");
+      return;
+    }
+    await discardSession(db, session.id);
     goto("today");
   }
 
@@ -336,10 +366,37 @@ export default function Workout() {
             setOverride(null);
           }}
         />
-        <PlatesSheet open={platesOpen} onClose={() => setPlatesOpen(false)} weight={override?.weight ?? 100} accentHex={accent.hex} />
+        <PlatesSheet open={platesOpen} onClose={() => setPlatesOpen(false)} weight={override?.weight ?? 100} barWeight={barWeight} accentHex={accent.hex} />
 
         <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} label="Add exercise" title="">
           <ExercisePicker exercises={exercises} accent={accent} onPick={addExercise} recentIds={recentIds} />
+        </Sheet>
+
+        <Sheet open={exitPrompt} onClose={() => setExitPrompt(false)} label="End workout" title="">
+          <div style={{ padding: "0 20px 16px" }}>
+            <div style={{ fontSize: 17, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em" }}>End this workout?</div>
+            <div style={{ fontSize: 13, color: TOK.muted, marginTop: 6, lineHeight: 1.5 }}>
+              Save it to your history, or discard it entirely.
+            </div>
+            <button
+              onClick={() => { setExitPrompt(false); exitSave(); }}
+              style={{ width: "100%", height: 56, marginTop: 20, background: accent.hex, color: accent.ink, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer" }}
+            >
+              Save workout
+            </button>
+            <button
+              onClick={() => { setExitPrompt(false); exitDiscard(); }}
+              style={{ width: "100%", height: 52, marginTop: 10, background: "transparent", color: TOK.fail, border: `1px solid ${TOK.border}`, borderRadius: 24, fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer" }}
+            >
+              Discard workout
+            </button>
+            <button
+              onClick={() => setExitPrompt(false)}
+              style={{ width: "100%", height: 48, marginTop: 6, background: "transparent", color: TOK.muted, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+          </div>
         </Sheet>
 
         {celebration && (
@@ -595,8 +652,8 @@ const PLATES = [
   { kg: 2.5, color: "#71717a" },
   { kg: 1.25, color: "#52525b" },
 ];
-function PlatesSheet({ open, onClose, weight, accentHex }: { open: boolean; onClose: () => void; weight: number; accentHex: string }) {
-  const perSide = (weight - 20) / 2;
+function PlatesSheet({ open, onClose, weight, barWeight, accentHex }: { open: boolean; onClose: () => void; weight: number; barWeight: number; accentHex: string }) {
+  const perSide = (weight - barWeight) / 2;
   const plates: { kg: number; color: string }[] = [];
   let rem = perSide;
   if (perSide > 0) {
@@ -616,7 +673,7 @@ function PlatesSheet({ open, onClose, weight, accentHex }: { open: boolean; onCl
     <Sheet open={open} onClose={onClose} label="Plate calculator" title="">
       <div style={{ padding: "0 20px 16px" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ fontSize: 13, color: TOK.muted }}>20 kg barbell · per side</div>
+          <div style={{ fontSize: 13, color: TOK.muted }}>{fmtW(barWeight)} kg barbell · per side</div>
           <Tnum style={{ fontSize: 26, fontWeight: 600, color: accentHex }}>
             {fmtW(weight)}<span style={{ fontSize: 14, color: TOK.muted, marginLeft: 4, fontWeight: 400 }}>kg</span>
           </Tnum>
