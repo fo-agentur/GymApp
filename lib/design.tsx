@@ -138,6 +138,9 @@ export const I = {
   Food: (p: IP) => <Icon {...p} d="M12 9c-1.7-1.5-4.2-1.5-5.7 0C4.8 10.6 4.8 13.7 6.4 16.3c1 1.7 2.4 3.4 3.6 3.9.7.3 1.3.3 2 0 1.2-.5 2.6-2.2 3.6-3.9 1.6-2.6 1.6-5.7.1-7.3-1.5-1.5-4-1.5-5.7 0Z M12 9c0-1.6.9-3.1 2.6-3.6" />,
   Camera: (p: IP) => <Icon {...p} d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />,
   Scan: (p: IP) => <Icon {...p} d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 8v8M10 8v8M13 8v8M16 8v8" w={2} />,
+  Grid: (p: IP) => <Icon {...p} d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" w={1.75} />,
+  Scale: (p: IP) => <Icon {...p} d="M5 7h14l2 11a1 1 0 0 1-1 1.2H4a1 1 0 0 1-1-1.2L5 7Zm7 0V4M9 11h6" />,
+  Flame: (p: IP) => <Icon {...p} d="M12 3c.5 2.7-1.6 4-2.8 5.6C8 10.2 8 12 8 12s-1-.6-1.5-2C5 12 5 13.7 5 15a7 7 0 0 0 14 0c0-3.3-2.3-5.4-3.6-6.8C14 6.6 13 4.8 12 3Z" />,
 };
 
 // ── Tnum ────────────────────────────────────────────────────────
@@ -512,29 +515,42 @@ export function Phone({ children, bg = TOK.bg, tabBar, hideStatusBar }: { childr
   );
 }
 
-export type TabId = "today" | "plan" | "food" | "stats" | "profile";
-export function TabBar({ active, onChange, accent = ACCENT }: { active: TabId | null; onChange?: (t: TabId) => void; accent?: Accent }) {
+export type TabId = "home" | "food" | "train" | "more";
+export function TabBar({ active, onChange, onAdd, accent = ACCENT }: { active: TabId | null; onChange?: (t: TabId) => void; onAdd?: () => void; accent?: Accent }) {
   const tabs: { id: TabId; label: string; icon: (p: IP) => React.ReactElement }[] = [
-    { id: "today", label: "Today", icon: I.Today },
-    { id: "plan", label: "Plan", icon: I.Routine },
+    { id: "home", label: "Home", icon: I.Grid },
     { id: "food", label: "Essen", icon: I.Food },
-    { id: "stats", label: "Stats", icon: I.Stats },
-    { id: "profile", label: "Profile", icon: I.User },
+    { id: "train", label: "Training", icon: I.Dumbbell },
+    { id: "more", label: "Mehr", icon: I.More },
   ];
+  const tabBtn = (t: { id: TabId; label: string; icon: (p: IP) => React.ReactElement }) => {
+    const sel = active === t.id;
+    return (
+      <button key={t.id} onClick={() => onChange?.(t.id)} style={{
+        flex: 1, height: 64, paddingTop: 11, background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 5, color: sel ? TOK.text : TOK.dim, WebkitTapHighlightColor: "transparent",
+      }}>
+        <t.icon size={20} color={sel ? TOK.text : TOK.dim} w={sel ? 2.25 : 1.75} />
+        <span style={{ fontSize: 10, fontWeight: sel ? 600 : 500, letterSpacing: "-0.01em" }}>{t.label}</span>
+      </button>
+    );
+  };
   return (
-    <div className="phone-tabbar" style={{ flexShrink: 0, borderTop: "1px solid #1a1a1a", background: TOK.surface, height: 64 + 24, paddingBottom: 24, display: "flex", alignItems: "flex-start" }}>
-      {tabs.map((t) => {
-        const sel = active === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange?.(t.id)} style={{
-            flex: 1, height: 64, paddingTop: 11, background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit",
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 5, color: sel ? accent.hex : TOK.dim, WebkitTapHighlightColor: "transparent",
-          }}>
-            <t.icon size={20} color={sel ? accent.hex : TOK.dim} w={sel ? 2.25 : 1.75} />
-            <span style={{ fontSize: 10, fontWeight: sel ? 600 : 500, letterSpacing: "-0.01em" }}>{t.label}</span>
-          </button>
-        );
-      })}
+    <div className="phone-tabbar" style={{ flexShrink: 0, borderTop: `1px solid ${TOK.border}`, background: TOK.surface, height: 64 + 24, paddingBottom: 24, display: "flex", alignItems: "flex-start" }}>
+      {tabBtn(tabs[0])}
+      {tabBtn(tabs[1])}
+      {/* center add FAB */}
+      <div style={{ width: 70, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 12 }}>
+        <button onClick={onAdd} aria-label="Add" style={{
+          width: 54, height: 54, borderRadius: 999, background: accent.hex, color: accent.ink, border: "none", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", marginTop: -20,
+          boxShadow: `0 10px 26px ${TOK.shadow}, 0 3px 8px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
+        }}>
+          <I.Plus size={24} color={accent.ink} w={2.25} />
+        </button>
+      </div>
+      {tabBtn(tabs[2])}
+      {tabBtn(tabs[3])}
     </div>
   );
 }

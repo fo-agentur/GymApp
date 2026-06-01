@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Exercise, Food, FoodLog, Routine, WorkoutSession } from "./supabase/types";
+import type { Database, Exercise, Food, FoodLog, NutritionProgram, Routine, WeightLog, WorkoutSession } from "./supabase/types";
 import type { MuscleGroup } from "./muscles";
 
 // Browser/server clients from @supabase/ssr resolve their Schema generic
@@ -475,4 +475,79 @@ export async function analyzeMealPhoto(
   }
   if (!data || (data as any).error) return { ok: false, error: (data as any)?.error ?? "No result" };
   return { ok: true, data: data as MealEstimate };
+}
+
+// ── Dashboard: week macros (sum per day) for the bar-grid ──
+export type DayMacros = { date: string; kcal: number; protein: number; carbs: number; fat: number };
+export async function fetchWeekMacros(db: DB, dates: string[]): Promise<Record<string, DayMacros>> {
+  const out: Record<string, DayMacros> = {};
+  for (const d of dates) out[d] = { date: d, kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  if (!dates.length) return out;
+  const { data, error } = await db
+    .from("food_logs")
+    .select("logged_on,kcal,protein_g,carbs_g,fat_g")
+    .gte("logged_on", dates[0])
+    .lte("logged_on", dates[dates.length - 1]);
+  if (error) throw error;
+  for (const r of data ?? []) {
+    const o = out[r.logged_on as string];
+    if (!o) continue;
+    o.kcal += r.kcal ?? 0;
+    o.protein += r.protein_g ?? 0;
+    o.carbs += r.carbs_g ?? 0;
+    o.fat += r.fat_g ?? 0;
+  }
+  return out;
+}
+
+// ── Weight logs + True-Weight inputs ──
+export async function fetchWeightLogs(db: DB, sinceDays = 120): Promise<WeightLog[]> {
+  const since = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10);
+  const { data, error } = await db
+    .from("weight_logs")
+    .select("*")
+    .gte("logged_on", since)
+    .order("logged_on", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function logWeight(db: DB, userId: string, loggedOn: string, weightKg: number, bodyFatPct?: number | null) {
+  const { error } = await db
+    .from("weight_logs")
+    .upsert({ user_id: userId, logged_on: loggedOn, weight_kg: weightKg, body_fat_pct: bodyFatPct ?? null }, { onConflict: "user_id,logged_on" });
+  if (error) throw error;
+}
+
+// ── Adaptive nutrition program (the coach's current plan) ──
+export async function fetchActiveProgram(db: DB): Promise<NutritionProgram | null> {
+  const { data, error } = await db.from("nutrition_programs").select("*").eq("active", true).maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+export async function saveProgram(
+  db: DB,
+  userId: string,
+  p: Partial<Database["public"]["Tables"]["nutrition_programs"]["Insert"]> & { id?: string }
+): Promise<NutritionProgram> {
+  if (p.id) {
+    const { data, error } = await db
+      .from("nutrition_programs")
+      .update({ ...p, updated_at: new Date().toISOString() })
+      .eq("id", p.id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as NutritionProgram;
+  }
+  // deactivate any existing active program, then insert the new active one
+  await db.from("nutrition_programs").update({ active: false }).eq("user_id", userId).eq("active", true);
+  const { data, error } = await db
+    .from("nutrition_programs")
+    .insert({ ...p, user_id: userId, active: true })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as NutritionProgram;
 }
