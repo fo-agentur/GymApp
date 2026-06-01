@@ -38,3 +38,7 @@ yarn-error.log*
 # exercise dataset (intermediate; regenerate via scripts/)
 exdb.json
 seed-exercises.sql
+
+# Verification artifacts
+verify-*.png
+.playwright-mcp/
