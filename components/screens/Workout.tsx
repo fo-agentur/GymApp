@@ -713,7 +713,7 @@ function RestTimerBar({ timer, accentHex, accentInk, onAdjust, onSkip }: { timer
   const done = timer.remaining <= 0;
   const pct = timer.total > 0 ? Math.max(0, Math.min(1, timer.remaining / timer.total)) : 0;
   return (
-    <div style={{ position: "absolute", left: 12, right: 12, bottom: 96, zIndex: 35, background: TOK.surface2, borderRadius: 18, padding: "12px 14px 14px", boxShadow: "0 16px 50px rgba(0,0,0,0.6)", border: `1px solid ${done ? TOK.pr : "rgba(190,242,100,0.4)"}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
+    <div style={{ position: "absolute", left: 12, right: 12, bottom: 96, zIndex: 35, background: TOK.surface2, borderRadius: 18, padding: "12px 14px 14px", boxShadow: "0 16px 50px rgba(0,0,0,0.6)", border: `1px solid ${done ? TOK.pr : TOK.border}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: done ? TOK.pr : accentHex }}>
           {done ? "Rest done — next set" : "Resting"}

@@ -41,4 +41,5 @@ seed-exercises.sql
 
 # Verification artifacts
 verify-*.png
+mf-*.png
 .playwright-mcp/

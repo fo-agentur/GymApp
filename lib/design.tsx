@@ -4,26 +4,39 @@
 import React from "react";
 
 // ── Tokens ──────────────────────────────────────────────────────
+// Values resolve to CSS variables defined in app/globals.css (dark by default,
+// light under [data-theme="light"]). Flipping the theme is a pure var swap — no
+// component edits. Concatenate with alpha is NOT possible on these; use a *-soft
+// var or an explicit rgba() instead.
 export const TOK = {
-  bg: "#000000",
-  surface: "#0a0a0a",
-  surface2: "#141414",
-  surface3: "#1c1c1c",
-  border: "#1f1f1f",
-  text: "#fafafa",
-  muted: "#a1a1aa",
-  dim: "#52525b",
-  fail: "#ef4444",
-  pr: "#22c55e",
+  bg: "var(--c-bg)",
+  surface: "var(--c-surface)",
+  surface2: "var(--c-surface2)",
+  surface3: "var(--c-surface3)",
+  border: "var(--c-border)",
+  text: "var(--c-text)",
+  muted: "var(--c-muted)",
+  dim: "var(--c-dim)",
+  fail: "var(--c-fail)",
+  pr: "var(--c-pr)",
+  primarySoft: "var(--c-primary-soft)",
+  shadow: "var(--c-shadow)",
+};
+
+// Macro colour semantics for all nutrition data viz (MacroFactor-style).
+export const MACRO = {
+  kcal: "var(--c-kcal)",
+  protein: "var(--c-protein)",
+  fat: "var(--c-fat)",
+  carbs: "var(--c-carbs)",
 };
 
 export type Accent = { hex: string; name: string; ink: string };
-export const ACCENTS: Record<string, Accent> = {
-  lime: { hex: "#bef264", name: "Electric lime", ink: "#0a0a0a" },
-  orange: { hex: "#fb923c", name: "Hot orange", ink: "#0a0a0a" },
-  cyan: { hex: "#22d3ee", name: "Signal cyan", ink: "#0a0a0a" },
-};
-export const ACCENT = ACCENTS.lime;
+// Neutral primary: white on dark, black on light. MacroFactor uses a neutral
+// primary for buttons + active states; the macro colours carry the meaning.
+// Kept as an object because many components accept an `accent` prop.
+export const ACCENT: Accent = { hex: "var(--c-primary)", name: "Primary", ink: "var(--c-primary-ink)" };
+export const ACCENTS: Record<string, Accent> = { primary: ACCENT };
 
 export const TYPE: Record<string, React.CSSProperties> = {
   h1: { fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 },
@@ -151,7 +164,7 @@ export function Btn({
   if (variant === "danger") { fg = TOK.fail; }
   return (
     <button type={type} onClick={onClick} disabled={disabled} style={{
-      width: full ? "100%" : undefined, height: h, padding: "0 16px", borderRadius: 12,
+      width: full ? "100%" : undefined, height: h, padding: "0 16px", borderRadius: 14,
       background: bg, color: fg, border: br, fontSize: fs, fontWeight: 600, letterSpacing: "-0.01em",
       fontFamily: "inherit", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1,
       display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -186,7 +199,7 @@ export function MetricStat({ label, value, unit, delta, deltaDir }: { label: str
   const positive = deltaDir === "up" || (typeof delta === "string" && delta.startsWith("+"));
   const dColor = positive ? TOK.pr : deltaDir === "down" ? TOK.fail : TOK.muted;
   return (
-    <div style={{ flex: 1, padding: 14, background: TOK.surface, borderRadius: 12, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+    <div style={{ flex: 1, padding: 14, background: TOK.surface, borderRadius: 16, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
       <div style={{ ...TYPE.col, color: TOK.dim }}>{label}</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 2 }}>
         <Tnum style={{ fontSize: 22, fontWeight: 600, color: TOK.text, letterSpacing: "-0.02em" }}>{value}</Tnum>
@@ -324,7 +337,7 @@ export function FAB({ children, onClick, accent = ACCENT }: { children?: React.R
       position: "absolute", right: 16, bottom: 24, zIndex: 40, height: 52, minWidth: 52, borderRadius: 999, padding: "0 18px",
       background: accent.hex, color: accent.ink, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600,
       letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
-      boxShadow: `0 12px 32px ${accent.hex}44, 0 4px 10px rgba(0,0,0,0.4)`, WebkitTapHighlightColor: "transparent",
+      boxShadow: `0 14px 34px ${TOK.shadow}, 0 6px 14px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
     }}>{children}</button>
   );
 }
@@ -387,7 +400,7 @@ export function Row({ label, sublabel, trailing, onTap, chevron, danger }: { lab
 }
 
 export function Card({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ background: TOK.surface, borderRadius: 12, overflow: "hidden", ...style }}>{children}</div>;
+  return <div style={{ background: TOK.surface, borderRadius: 18, overflow: "hidden", ...style }}>{children}</div>;
 }
 export function Divider() {
   return <div style={{ height: 1, background: TOK.border, margin: "0 16px" }} />;

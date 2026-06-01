@@ -29,7 +29,7 @@ export default function Routines() {
           onClick={() => goto("library")}
           style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, background: TOK.surface, border: "none", borderRadius: 12, padding: "14px 16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
         >
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: `${accent.hex}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: TOK.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <I.Dumbbell size={18} color={accent.hex} w={2} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>

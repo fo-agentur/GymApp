@@ -1,7 +1,14 @@
 # GymApp
 
-Strength-tracking PWA. Next.js 15 + Supabase. Multi-user with **username + password**;
-every user's data is isolated via Postgres Row Level Security.
+**MacroFactor Nutrition + MacroFactor Workouts — in one app.**
+
+A private PWA for Florian + ~10 friends that fuses both MacroFactor apps into a single
+experience and matches them in design, feel, and functionality as closely as possible.
+Next.js 15 + Supabase. Multi-user with **username + password**; every user's data is
+isolated via Postgres Row Level Security. No paywall, no ads.
+
+> Functionality-equivalent re-creation inspired by MacroFactor's UX and its publicly
+> documented algorithms — not a pixel/IP copy.
 
 ## Run locally
 
@@ -14,41 +21,42 @@ pnpm dev        # http://localhost:3000
 
 ## How auth works
 
-Friends sign up with a **username + password** — no email needed. Internally each
-username maps to a synthetic `username@gymapp.local` address. New accounts are
-auto-confirmed by a database trigger, so login is instant.
+Friends sign up with a **username + password** — no email needed. Each username maps to a
+synthetic `username@gymapp.local` address; a database trigger auto-confirms accounts, so
+login is instant.
 
-## What's built
+## Built today
 
-- **Sign in / Sign up** — username + password
-- **Today** — coach hero, this-week stats, recent sessions
-- **Active Workout** — start from a routine or empty, coach set suggestions,
-  log sets (saved to Supabase live), plate calculator, finish → totals computed
-- **History** + session detail (grouped by week)
-- **Exercises** library (29 seeded globals + add your own) with per-exercise
-  history and an estimated-1RM chart
-- **Routines** — create / edit / reorder / archive
-- **Progress** — totals, volume by muscle, 12-week training-frequency heatmap
-- **Profile / Settings** — units, bar weight, default rest (saved to your profile)
+**Training**
+- Active workout — start from a routine or empty, coach set suggestions, log sets live,
+  rest timer, plate calculator, finish → totals + PR detection
+- 873-exercise library with how-to guides, images, anatomical muscle map
+- History + session detail, routines (create / edit / reorder / archive), progress charts
 
-## Deviations from AGENTS.md (intentional, for a working v1)
+**Nutrition**
+- Food log — search (Open Food Facts), barcode scan, **AI photo → macros**, manual entry
+- Macro targets + day/meal logging
 
-The original AGENTS.md specced a larger stack. To ship a faithful, working app fast,
-this v1 trims it. None of these change the product; they're swappable later:
+**Account** — profile, settings (units, bar weight, rest defaults)
 
-| AGENTS.md | This build | Why |
-|-----------|-----------|-----|
-| Magic-link auth | Username + password | Explicit requirement |
-| Drizzle ORM | `@supabase/supabase-js` queries | Fewer moving parts |
-| Tailwind v4 + shadcn | Inline styles ported from the design handoff | The design handoff *is* inline-style React → pixel-faithful, no translation layer |
-| Dexie offline queue | Direct online writes | Deferred (add later without schema change) |
-| TanStack Query / Zustand | React state + Supabase | Simpler for v1 |
-| next-pwa | Responsive phone-frame + manifest-ready | PWA install can be layered on |
+## Building toward (MacroFactor parity)
 
-Database schema, RLS, and the design language match the spec exactly. SQL migrations
-live in `lib/db/migrations/`.
+Unified MacroFactor-style dashboard · weekly macro bar-grid · **adaptive nutrition coach**
+(True-Weight trend + dynamic expenditure/TDEE + weekly target adjustment; Coached /
+Collaborative / Manual) · weight + body-metrics tracking with trend charts · full
+micronutrients · habits · **workout auto-progression** + program builder with RIR / drop /
+failure / myorep sets · volume analytics · light + dark themes.
+
+See `AGENTS.md` for the full spec, architecture, and the two adaptive engines.
+
+## Architecture in one line
+
+One client shell (`app/page.tsx` → `components/AppShell.tsx`) with a screen router; inline
+-style components from `lib/design.tsx`; all data via `lib/data.ts` → Supabase. No
+per-screen routes, no Tailwind.
 
 ## Deploy
 
-Push to GitHub and import into Vercel. Set these env vars in Vercel:
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+Push to `main` → Vercel auto-deploys. Env vars in Vercel: `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`. The AI photo feature additionally needs the Supabase Edge
+Function secret `OPENROUTER_API_KEY` (set in the Supabase Dashboard, never in code).
