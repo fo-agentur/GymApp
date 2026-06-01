@@ -324,7 +324,7 @@ export async function addFoodLog(db: DB, userId: string, loggedOn: string, e: Ne
     .insert({
       user_id: userId,
       logged_on: loggedOn,
-      meal: e.meal,
+      meal: (e.meal || "other").toLowerCase(),
       food_id: e.food_id ?? null,
       name: e.name,
       qty_g: e.qty_g ?? null,
@@ -405,7 +405,11 @@ function normalizeOff(p: any): OffFood | null {
     name: name.slice(0, 80),
     brand: (p.brands ? String(p.brands).split(",")[0].trim() : null) || null,
     barcode: p.code ? String(p.code) : null,
-    serving_g: p.serving_quantity ? offNum(p.serving_quantity) : null,
+    // Only trust serving_quantity when it's in grams (OFF also stores mL etc.).
+    serving_g:
+      p.serving_quantity && (!p.serving_quantity_unit || String(p.serving_quantity_unit).toLowerCase() === "g")
+        ? offNum(p.serving_quantity)
+        : null,
     kcal: Math.round(offNum(n["energy-kcal_100g"])),
     protein_g: Math.round(offNum(n.proteins_100g)),
     carbs_g: Math.round(offNum(n.carbohydrates_100g)),
@@ -413,7 +417,7 @@ function normalizeOff(p: any): OffFood | null {
   };
 }
 
-const OFF_FIELDS = "product_name,product_name_de,generic_name,brands,code,serving_quantity,nutriments";
+const OFF_FIELDS = "product_name,product_name_de,generic_name,brands,code,serving_quantity,serving_quantity_unit,nutriments";
 
 export async function offSearch(query: string, limit = 20): Promise<OffFood[]> {
   const q = query.trim();
@@ -456,7 +460,19 @@ export async function analyzeMealPhoto(
   hint?: string
 ): Promise<{ ok: true; data: MealEstimate } | { ok: false; error: string }> {
   const { data, error } = await db.functions.invoke("analyze-meal", { body: { image: imageDataUrl, hint } });
-  if (error) return { ok: false, error: error.message ?? "Request failed" };
+  if (error) {
+    // supabase-js surfaces non-2xx as a FunctionsHttpError; the helpful body
+    // message (e.g. "OPENROUTER_API_KEY secret is not set") lives in .context.
+    let msg = error.message ?? "Request failed";
+    try {
+      const ctx = (error as any).context;
+      const body = ctx && typeof ctx.json === "function" ? await ctx.json() : null;
+      if (body?.error) msg = body.error;
+    } catch {
+      /* keep generic message */
+    }
+    return { ok: false, error: msg };
+  }
   if (!data || (data as any).error) return { ok: false, error: (data as any)?.error ?? "No result" };
   return { ok: true, data: data as MealEstimate };
 }

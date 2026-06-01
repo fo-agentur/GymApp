@@ -85,10 +85,10 @@ export default function Food() {
   const kcalMax = targets.kcal && targets.kcal > 0 ? targets.kcal : DEFAULT_KCAL;
   const hasTargets = !!(targets.kcal || targets.protein || targets.carbs || targets.fat);
 
-  const byMeal = MEAL_ORDER.map((m) => ({ meal: m, items: logs.filter((l) => l.meal === m) })).filter((g) => g.items.length > 0);
+  const byMeal = MEAL_ORDER.map((m) => ({ meal: m, items: logs.filter((l) => l.meal.toLowerCase() === m.toLowerCase()) })).filter((g) => g.items.length > 0);
   // Any logs with an unrecognised meal name still get shown under "Other".
-  const known = new Set(MEAL_ORDER);
-  const others = logs.filter((l) => !known.has(l.meal));
+  const known = new Set(MEAL_ORDER.map((m) => m.toLowerCase()));
+  const others = logs.filter((l) => !known.has(l.meal.toLowerCase()));
   if (others.length) byMeal.push({ meal: "Other", items: others });
 
   return (
