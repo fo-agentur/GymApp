@@ -122,6 +122,9 @@ export const I = {
   X: (p: IP) => <Icon {...p} d="M6 6l12 12M18 6 6 18" w={2} />,
   Star: (p: IP) => <Icon {...p} d="m12 3 2.7 5.7L21 9.6l-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9L7.5 14 3 9.6l6.3-.9L12 3Z" />,
   Dumbbell: (p: IP) => <Icon {...p} d="M3 12h2M19 12h2M7 8v8M17 8v8M9 12h6" w={2} />,
+  Food: (p: IP) => <Icon {...p} d="M12 9c-1.7-1.5-4.2-1.5-5.7 0C4.8 10.6 4.8 13.7 6.4 16.3c1 1.7 2.4 3.4 3.6 3.9.7.3 1.3.3 2 0 1.2-.5 2.6-2.2 3.6-3.9 1.6-2.6 1.6-5.7.1-7.3-1.5-1.5-4-1.5-5.7 0Z M12 9c0-1.6.9-3.1 2.6-3.6" />,
+  Camera: (p: IP) => <Icon {...p} d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />,
+  Scan: (p: IP) => <Icon {...p} d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 8v8M10 8v8M13 8v8M16 8v8" w={2} />,
 };
 
 // ── Tnum ────────────────────────────────────────────────────────
@@ -384,6 +387,77 @@ export function Divider() {
   return <div style={{ height: 1, background: TOK.border, margin: "0 16px" }} />;
 }
 
+// ── ProgressRing: inline SVG arc, value/max. Renders children in the centre. ──
+export function ProgressRing({
+  value, max, size = 104, stroke = 9, color = ACCENT.hex, track = TOK.surface2, children, animate = true,
+}: {
+  value: number; max: number; size?: number; stroke?: number; color?: string; track?: string; children?: React.ReactNode; animate?: boolean;
+}) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const pct = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
+  const [mounted, setMounted] = React.useState(!animate);
+  React.useEffect(() => {
+    if (!animate) return;
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, [animate]);
+  const offset = circ * (1 - (mounted ? pct : 0));
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 800ms cubic-bezier(0.22, 1, 0.36, 1)" }}
+        />
+      </svg>
+      {children != null && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── WeekStrip: 7 dots Mon–Sun for the current week. Filled = trained, ring = today. ──
+export function WeekStrip({ trained, accent = ACCENT }: { trained: Set<string>; accent?: Accent }) {
+  const labels = ["M", "T", "W", "T", "F", "S", "S"];
+  const today = new Date();
+  const monday = new Date(today);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const todayStr = today.toDateString();
+  return (
+    <div style={{ display: "flex", gap: 6, justifyContent: "space-between" }}>
+      {labels.map((l, i) => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        const done = trained.has(d.toDateString());
+        const isToday = d.toDateString() === todayStr;
+        const future = d.getTime() > today.getTime() && !isToday;
+        return (
+          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, color: isToday ? accent.hex : TOK.dim }}>{l}</span>
+            <div style={{
+              width: 28, height: 28, borderRadius: 999,
+              background: done ? accent.hex : TOK.surface2,
+              border: isToday ? `1.5px solid ${accent.hex}` : "1.5px solid transparent",
+              opacity: future ? 0.35 : 1,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "background 300ms ease",
+            }}>
+              {done && <I.Check size={14} color={accent.ink} />}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Phone chrome ────────────────────────────────────────────────
 function PhoneStatusBar({ light = true }: { light?: boolean }) {
   const c = light ? "#fafafa" : "#0a0a0a";
@@ -419,11 +493,12 @@ export function Phone({ children, bg = TOK.bg, tabBar, hideStatusBar }: { childr
   );
 }
 
-export type TabId = "today" | "plan" | "stats" | "profile";
+export type TabId = "today" | "plan" | "food" | "stats" | "profile";
 export function TabBar({ active, onChange, accent = ACCENT }: { active: TabId | null; onChange?: (t: TabId) => void; accent?: Accent }) {
   const tabs: { id: TabId; label: string; icon: (p: IP) => React.ReactElement }[] = [
     { id: "today", label: "Today", icon: I.Today },
     { id: "plan", label: "Plan", icon: I.Routine },
+    { id: "food", label: "Essen", icon: I.Food },
     { id: "stats", label: "Stats", icon: I.Stats },
     { id: "profile", label: "Profile", icon: I.User },
   ];

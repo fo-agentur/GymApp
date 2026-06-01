@@ -14,6 +14,7 @@ export type ScreenId =
   | "routines"
   | "routine-editor"
   | "progress"
+  | "food"
   | "profile"
   | "settings";
 

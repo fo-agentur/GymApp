@@ -16,18 +16,21 @@ import ExerciseDetail from "./screens/ExerciseDetail";
 import Routines from "./screens/Routines";
 import RoutineEditor from "./screens/RoutineEditor";
 import Progress from "./screens/Progress";
+import Food from "./screens/Food";
 import Profile from "./screens/Profile";
 import Settings from "./screens/Settings";
 
 const TAB_TO_SCREEN: Record<TabId, ScreenId> = {
   today: "today",
   plan: "routines",
+  food: "food",
   stats: "progress",
   profile: "profile",
 };
 const SCREEN_TO_TAB: Partial<Record<ScreenId, TabId>> = {
   today: "today",
   routines: "plan",
+  food: "food",
   progress: "stats",
   profile: "profile",
 };
@@ -107,6 +110,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     case "routines": body = <Routines />; break;
     case "routine-editor": body = <RoutineEditor />; break;
     case "progress": body = <Progress />; break;
+    case "food": body = <Food />; break;
     case "profile": body = <Profile />; break;
     case "settings": body = <Settings />; break;
     default: body = <Today />;

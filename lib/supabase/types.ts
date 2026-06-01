@@ -51,6 +51,110 @@ export type Database = {
         }
         Relationships: []
       }
+      foods: {
+        Row: {
+          barcode: string | null
+          brand: string | null
+          carbs_g: number
+          created_at: string
+          created_by: string | null
+          fat_g: number
+          id: string
+          kcal: number
+          name: string
+          protein_g: number
+          serving_g: number | null
+          source: string
+        }
+        Insert: {
+          barcode?: string | null
+          brand?: string | null
+          carbs_g?: number
+          created_at?: string
+          created_by?: string | null
+          fat_g?: number
+          id?: string
+          kcal?: number
+          name: string
+          protein_g?: number
+          serving_g?: number | null
+          source?: string
+        }
+        Update: {
+          barcode?: string | null
+          brand?: string | null
+          carbs_g?: number
+          created_at?: string
+          created_by?: string | null
+          fat_g?: number
+          id?: string
+          kcal?: number
+          name?: string
+          protein_g?: number
+          serving_g?: number | null
+          source?: string
+        }
+        Relationships: []
+      }
+      food_logs: {
+        Row: {
+          carbs_g: number
+          created_at: string
+          fat_g: number
+          food_id: string | null
+          id: string
+          kcal: number
+          logged_on: string
+          meal: string
+          name: string
+          photo_path: string | null
+          protein_g: number
+          qty_g: number | null
+          source: string
+          user_id: string
+        }
+        Insert: {
+          carbs_g?: number
+          created_at?: string
+          fat_g?: number
+          food_id?: string | null
+          id?: string
+          kcal?: number
+          logged_on?: string
+          meal?: string
+          name: string
+          photo_path?: string | null
+          protein_g?: number
+          qty_g?: number | null
+          source?: string
+          user_id: string
+        }
+        Update: {
+          carbs_g?: number
+          created_at?: string
+          fat_g?: number
+          food_id?: string | null
+          id?: string
+          kcal?: number
+          logged_on?: string
+          meal?: string
+          name?: string
+          photo_path?: string | null
+          protein_g?: number
+          qty_g?: number | null
+          source?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "food_logs_food_id_fkey"
+            columns: ["food_id"]
+            isOneToOne: false
+            referencedRelation: "foods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       personal_records: {
         Row: {
           achieved_at: string
@@ -90,6 +194,10 @@ export type Database = {
           equipment: Json
           id: string
           onboarding_completed: boolean
+          target_carbs_g: number | null
+          target_fat_g: number | null
+          target_kcal: number | null
+          target_protein_g: number | null
           units: string
         }
         Insert: {
@@ -100,6 +208,10 @@ export type Database = {
           equipment?: Json
           id: string
           onboarding_completed?: boolean
+          target_carbs_g?: number | null
+          target_fat_g?: number | null
+          target_kcal?: number | null
+          target_protein_g?: number | null
           units?: string
         }
         Update: {
@@ -110,6 +222,10 @@ export type Database = {
           equipment?: Json
           id?: string
           onboarding_completed?: boolean
+          target_carbs_g?: number | null
+          target_fat_g?: number | null
+          target_kcal?: number | null
+          target_protein_g?: number | null
           units?: string
         }
         Relationships: []
@@ -280,3 +396,5 @@ export type RoutineExercise = Tables<"routine_exercises">
 export type WorkoutSession = Tables<"workout_sessions">
 export type SetRowDB = Tables<"sets">
 export type Profile = Tables<"profiles">
+export type Food = Tables<"foods">
+export type FoodLog = Tables<"food_logs">

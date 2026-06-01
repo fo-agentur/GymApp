@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Exercise, Routine, WorkoutSession } from "./supabase/types";
+import type { Database, Exercise, Food, FoodLog, Routine, WorkoutSession } from "./supabase/types";
+import type { MuscleGroup } from "./muscles";
 
 // Browser/server clients from @supabase/ssr resolve their Schema generic
 // concretely; keep this alias permissive on that 3rd generic so both are assignable.
@@ -271,4 +272,191 @@ export async function fetchStats(db: DB): Promise<Stats> {
   const durations = sessions.map((s) => s.duration_seconds ?? 0).filter((d) => d > 0);
   const avgDuration = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length / 60) : 0;
   return { totalSessions, totalVolume, totalSets, avgDuration };
+}
+
+// ── Weekly muscle volume (working-set count per primary muscle, last 7 days) ──
+// Shared by Progress (full body map) and Today (Cockpit heatmap snapshot).
+export async function weeklyMuscleSets(
+  db: DB,
+  exMap: Record<string, Exercise>
+): Promise<Partial<Record<MuscleGroup, number>>> {
+  const weekStart = Date.now() - 7 * 24 * 3600 * 1000;
+  const { data, error } = await db.from("sets").select("is_warmup,exercise_id,completed_at");
+  if (error) throw error;
+  const agg: Record<string, number> = {};
+  for (const s of data ?? []) {
+    if (s.is_warmup) continue;
+    if (s.completed_at && new Date(s.completed_at).getTime() >= weekStart) {
+      const muscle = exMap[s.exercise_id]?.primary_muscle ?? "Other";
+      agg[muscle] = (agg[muscle] ?? 0) + 1;
+    }
+  }
+  return agg as Partial<Record<MuscleGroup, number>>;
+}
+
+// ── Nutrition: food_logs (per user/day) ─────────────────────────
+export type NewFoodLog = {
+  name: string;
+  meal: string;
+  food_id?: string | null;
+  qty_g?: number | null;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  source: string;
+  photo_path?: string | null;
+};
+
+export async function fetchFoodLogs(db: DB, loggedOn: string): Promise<FoodLog[]> {
+  const { data, error } = await db
+    .from("food_logs")
+    .select("*")
+    .eq("logged_on", loggedOn)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addFoodLog(db: DB, userId: string, loggedOn: string, e: NewFoodLog): Promise<FoodLog> {
+  const { data, error } = await db
+    .from("food_logs")
+    .insert({
+      user_id: userId,
+      logged_on: loggedOn,
+      meal: e.meal,
+      food_id: e.food_id ?? null,
+      name: e.name,
+      qty_g: e.qty_g ?? null,
+      kcal: e.kcal,
+      protein_g: e.protein_g,
+      carbs_g: e.carbs_g,
+      fat_g: e.fat_g,
+      source: e.source,
+      photo_path: e.photo_path ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as FoodLog;
+}
+
+export async function deleteFoodLog(db: DB, id: string) {
+  const { error } = await db.from("food_logs").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Search the shared foods cache (foods other users already looked up).
+export async function searchFoodsCache(db: DB, query: string, limit = 15): Promise<Food[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const { data, error } = await db.from("foods").select("*").ilike("name", `%${q}%`).limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Best-effort insert into the shared foods cache; returns the new id or null.
+export async function cacheFood(
+  db: DB,
+  f: { source: string; barcode?: string | null; name: string; brand?: string | null; serving_g?: number | null; kcal: number; protein_g: number; carbs_g: number; fat_g: number }
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("foods")
+    .insert({
+      source: f.source,
+      barcode: f.barcode ?? null,
+      name: f.name,
+      brand: f.brand ?? null,
+      serving_g: f.serving_g ?? null,
+      kcal: f.kcal,
+      protein_g: f.protein_g,
+      carbs_g: f.carbs_g,
+      fat_g: f.fat_g,
+    })
+    .select("id")
+    .single();
+  if (error) return null;
+  return data?.id ?? null;
+}
+
+// ── Open Food Facts (live search + barcode). Macros are per 100g. ──
+export type OffFood = {
+  name: string;
+  brand: string | null;
+  barcode: string | null;
+  serving_g: number | null;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+function offNum(v: unknown): number {
+  const x = typeof v === "number" ? v : parseFloat(String(v));
+  return isFinite(x) ? x : 0;
+}
+
+function normalizeOff(p: any): OffFood | null {
+  if (!p) return null;
+  const name = (p.product_name_de || p.product_name || p.generic_name || "").toString().trim();
+  if (!name) return null;
+  const n = p.nutriments ?? {};
+  return {
+    name: name.slice(0, 80),
+    brand: (p.brands ? String(p.brands).split(",")[0].trim() : null) || null,
+    barcode: p.code ? String(p.code) : null,
+    serving_g: p.serving_quantity ? offNum(p.serving_quantity) : null,
+    kcal: Math.round(offNum(n["energy-kcal_100g"])),
+    protein_g: Math.round(offNum(n.proteins_100g)),
+    carbs_g: Math.round(offNum(n.carbohydrates_100g)),
+    fat_g: Math.round(offNum(n.fat_100g)),
+  };
+}
+
+const OFF_FIELDS = "product_name,product_name_de,generic_name,brands,code,serving_quantity,nutriments";
+
+export async function offSearch(query: string, limit = 20): Promise<OffFood[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const url =
+    `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}` +
+    `&search_simple=1&action=process&json=1&page_size=${limit}&fields=${OFF_FIELDS}`;
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return ((data.products ?? []) as any[])
+      .map(normalizeOff)
+      .filter((f): f is OffFood => !!f && f.kcal > 0);
+  } catch {
+    return [];
+  }
+}
+
+export async function offByBarcode(barcode: string): Promise<OffFood | null> {
+  const code = barcode.trim();
+  if (!code) return null;
+  const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}?fields=${OFF_FIELDS}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.product) return null;
+    return normalizeOff(data.product);
+  } catch {
+    return null;
+  }
+}
+
+// ── AI photo -> macros (via the analyze-meal edge function) ──
+export type MealEstimate = { name: string; serving_g: number; kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+export async function analyzeMealPhoto(
+  db: DB,
+  imageDataUrl: string,
+  hint?: string
+): Promise<{ ok: true; data: MealEstimate } | { ok: false; error: string }> {
+  const { data, error } = await db.functions.invoke("analyze-meal", { body: { image: imageDataUrl, hint } });
+  if (error) return { ok: false, error: error.message ?? "Request failed" };
+  if (!data || (data as any).error) return { ok: false, error: (data as any)?.error ?? "No result" };
+  return { ok: true, data: data as MealEstimate };
 }
