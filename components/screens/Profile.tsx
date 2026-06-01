@@ -6,7 +6,7 @@ import type { Profile as ProfileRow } from "@/lib/supabase/types";
 import { TOK, TYPE, ScreenHeader, SectionHeader, Card, Row, Divider, MetricStat, Btn, I, fmtVol } from "@/lib/design";
 
 export default function Profile() {
-  const { db, userId, username, accent, goto, signOut } = useApp();
+  const { db, userId, username, goto, signOut } = useApp();
   const [profile, setProfile] = React.useState<ProfileRow | null>(null);
   const [stats, setStats] = React.useState<Stats | null>(null);
 
@@ -19,38 +19,44 @@ export default function Profile() {
   }, [db, userId]);
 
   const initials = username.slice(0, 2).toUpperCase();
-  const memberSince = profile ? new Date(profile.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—";
+  const memberSince = profile ? new Date(profile.created_at).toLocaleDateString("de-DE", { month: "short", year: "numeric" }) : "—";
 
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 32 }}>
-      <ScreenHeader large title="Profile" />
+      <ScreenHeader large title="Mehr" />
 
       <div style={{ padding: "0 16px 24px", display: "flex", alignItems: "center", gap: 16 }}>
         <div style={{ width: 64, height: 64, borderRadius: 999, background: TOK.surface, display: "flex", alignItems: "center", justifyContent: "center", color: TOK.text, fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em" }}>{initials}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...TYPE.cardTitle, color: TOK.text }}>{profile?.display_name || username}</div>
-          <div style={{ fontSize: 12, color: TOK.dim, marginTop: 4 }}>Member since {memberSince}</div>
+          <div style={{ fontSize: 12, color: TOK.dim, marginTop: 4 }}>Mitglied seit {memberSince}</div>
         </div>
       </div>
 
-      <SectionHeader title="Account" />
-      <Card style={{ margin: "0 12px 20px" }}>
-        <Row label="Username" sublabel={username} />
-      </Card>
-
-      <SectionHeader title="Stats" />
+      <SectionHeader title="Statistik" />
       <div style={{ padding: "0 12px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <MetricStat label="Total sessions" value={stats?.totalSessions ?? 0} />
-        <MetricStat label="Total volume" value={fmtVol(stats?.totalVolume ?? 0)} unit="kg" />
+        <MetricStat label="Einheiten" value={stats?.totalSessions ?? 0} />
+        <MetricStat label="Volumen" value={fmtVol(stats?.totalVolume ?? 0)} unit="kg" />
       </div>
 
-      <SectionHeader title="Settings" />
+      <SectionHeader title="Auswertung" />
       <Card style={{ margin: "0 12px 20px" }}>
-        <Row label="App settings" chevron onTap={() => goto("settings")} />
+        <Row label="Statistiken & Muskeln" chevron onTap={() => goto("progress")} />
+        <Divider />
+        <Row label="Verlauf" sublabel="Alle Workouts" chevron onTap={() => goto("history")} />
+        <Divider />
+        <Row label="Übungs-Bibliothek" chevron onTap={() => goto("library")} />
       </Card>
 
-      <div style={{ padding: "20px 12px 0" }}>
-        <Btn variant="danger" full leadIcon={<I.Logout size={16} color={TOK.fail} />} onClick={signOut}>Sign Out</Btn>
+      <SectionHeader title="Konto" />
+      <Card style={{ margin: "0 12px 20px" }}>
+        <Row label="Benutzername" sublabel={username} />
+        <Divider />
+        <Row label="App-Einstellungen" chevron onTap={() => goto("settings")} />
+      </Card>
+
+      <div style={{ padding: "8px 12px 0" }}>
+        <Btn variant="danger" full leadIcon={<I.Logout size={16} color={TOK.fail} />} onClick={signOut}>Abmelden</Btn>
       </div>
     </div>
   );
