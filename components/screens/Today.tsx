@@ -105,12 +105,16 @@ export default function Today() {
       .filter((e) => e.n > 0)
       .sort((a, b) => b.n - a.n);
     if (entries.length === 0) return "No working sets logged this week yet.";
-    const onTrack = entries.filter((e) => statusLabel(e.n).text === "on track" || statusLabel(e.n).text === "high");
+    const isStrong = (n: number) => ["on track", "high", "very high"].includes(statusLabel(n).text);
+    const onTrack = entries.filter((e) => isStrong(e.n));
     const weakest = entries[entries.length - 1];
+    const weakStatus = statusLabel(weakest.n).text;
     const lead = onTrack.length
       ? `${onTrack.slice(0, 2).map((e) => e.m).join(" & ")} on track`
       : `${entries[0].m} leading`;
-    return `${lead} · ${weakest.m} lagging (${weakest.n} set${weakest.n === 1 ? "" : "s"})`;
+    // Only call out a lagging muscle when there's more than one and it's genuinely low.
+    const showLagging = entries.length > 1 && (weakStatus === "low" || weakStatus === "untrained");
+    return showLagging ? `${lead} · ${weakest.m} lagging (${weakest.n} set${weakest.n === 1 ? "" : "s"})` : lead;
   })();
 
   const startSuggested = () =>

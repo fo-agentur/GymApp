@@ -132,8 +132,12 @@ textarea {
   100% { transform: scale(1); }
 }
 @keyframes gymFade {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  /* Opacity-only on purpose: this animates the screen wrapper (.gym-fade), and any
+     transform here (even a filled identity matrix under fill-mode: both) creates a
+     containing block that mis-anchors position:absolute bottom sheets like the food
+     Add sheet. Per-element slide-ups should use gymUp on inner content, not here. */
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes gymPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(190, 242, 100, 0.5); }

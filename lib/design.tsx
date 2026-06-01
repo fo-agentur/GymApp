@@ -294,7 +294,13 @@ export function Sheet({ open, onClose, children, title, label }: { open: boolean
       <div style={{
         position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 90, background: TOK.surface2,
         borderTopLeftRadius: 18, borderTopRightRadius: 18, transform: open ? "translateY(0)" : "translateY(110%)",
-        transition: "transform 360ms cubic-bezier(0.22, 1, 0.36, 1)", paddingBottom: 28,
+        // visibility guarantees the closed sheet is gone even if the transform can't
+        // fully clear it in a given layout; delay hiding until the slide-out finishes.
+        visibility: open ? "visible" : "hidden",
+        transition: open
+          ? "transform 360ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s"
+          : "transform 360ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s 360ms",
+        paddingBottom: 28,
         boxShadow: "0 -20px 60px rgba(0,0,0,0.5)", maxHeight: "calc(100% - 60px)", overflow: "hidden", display: "flex", flexDirection: "column",
       }}>
         <div style={{ padding: "10px 0 4px", display: "flex", justifyContent: "center" }}>
