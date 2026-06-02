@@ -12,18 +12,33 @@ import {
   fetchProfile,
 } from "@/lib/data";
 import type { WorkoutSession, Exercise } from "@/lib/supabase/types";
-import { TOK, Tnum, I, Sheet, fmtW, mmss, epley1rm } from "@/lib/design";
+import { TOK, MACRO, Tnum, I, Sheet, fmtW, mmss, epley1rm } from "@/lib/design";
 import ExercisePicker from "./ExercisePicker";
+
+export type SetType = "normal" | "warmup" | "drop" | "failure" | "myorep" | "partial";
+const SET_TYPES: { id: SetType; label: string; mark: string; color: string }[] = [
+  { id: "normal", label: "Normal", mark: "", color: TOK.muted },
+  { id: "warmup", label: "Aufwärmen", mark: "W", color: MACRO.kcal },
+  { id: "drop", label: "Dropsatz", mark: "D", color: MACRO.protein },
+  { id: "failure", label: "Versagen", mark: "F", color: TOK.fail },
+  { id: "myorep", label: "Myo-Reps", mark: "M", color: MACRO.carbs },
+  { id: "partial", label: "Partials", mark: "P", color: MACRO.fat },
+];
+const setMark = (t: SetType, idx: number) => (t === "normal" ? String(idx) : SET_TYPES.find((x) => x.id === t)?.mark ?? String(idx));
+const setColor = (t: SetType) => SET_TYPES.find((x) => x.id === t)?.color ?? TOK.muted;
 
 type WSet = {
   localId: string;
   weight: number | null;
   reps: number | null;
-  rpe: number | null;
+  rir: number | null;
+  partials: number | null;
+  setType: SetType;
   warmup: boolean;
   status: "planned" | "done";
   dbId?: string;
 };
+type Suggestion = { weight: number; reps: number; rir: number };
 type WEx = {
   key: string;
   exerciseId: string;
@@ -31,9 +46,10 @@ type WEx = {
   muscle: string;
   category: string;
   last: string | null;
+  targetReps: string;
   priorBest1rm: number;
   rest: number;
-  suggestion: { weight: number; reps: number; rpe: number };
+  suggestion: Suggestion;
   sets: WSet[];
 };
 
@@ -46,7 +62,7 @@ export default function Workout() {
   const [exs, setExs] = React.useState<WEx[]>([]);
   const [currentKey, setCurrentKey] = React.useState<string | null>(null);
   const [elapsed, setElapsed] = React.useState(0);
-  const [override, setOverride] = React.useState<{ exKey: string; setId: string; weight: number; reps: number; rpe: number } | null>(null);
+  const [override, setOverride] = React.useState<{ exKey: string; setId: string; weight: number; reps: number; rir: number; partials: number | null; setType: SetType } | null>(null);
   const [platesOpen, setPlatesOpen] = React.useState(false);
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [finishing, setFinishing] = React.useState(false);
@@ -82,7 +98,7 @@ export default function Workout() {
           for (const re of routine.routine_exercises) {
             const ex = exMap[re.exercise_id];
             if (!ex) continue;
-            built.push(await buildEx(ex, re.target_sets, re.target_reps_min, re.target_rpe, re.rest_seconds ?? 120));
+            built.push(await buildEx(ex, re.target_sets, re.target_reps_min, re.target_reps_max, re.target_rir, re.rest_seconds ?? 120));
           }
         }
       }
@@ -93,17 +109,28 @@ export default function Workout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, rpe: number | null = 8, rest = 120): Promise<WEx> {
-    let suggestion = { weight: ex.category === "bodyweight" ? 0 : 20, reps: repsMin ?? 8, rpe: rpe ?? 8 };
+  async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, repsMax: number | null = null, targetRir: number | null = 2, rest = 120): Promise<WEx> {
+    const loMin = repsMin ?? 8;
+    const loMax = repsMax ?? (repsMin ? repsMin + 4 : 12);
+    const rirTarget = targetRir ?? 2;
+    let suggestion: Suggestion = { weight: ex.category === "bodyweight" ? 0 : 20, reps: loMin, rir: rirTarget };
     let last: string | null = null;
     let priorBest1rm = 0;
     try {
       const perf = await fetchLastPerformance(db, ex.id, userId);
       if (perf && perf.best_weight != null) {
         priorBest1rm = epley1rm(perf.best_weight ?? 0, perf.best_reps ?? 0);
-        const bump = (perf.best_rpe ?? 8) <= 8 && ex.category !== "bodyweight" ? 2.5 : 0;
-        suggestion = { weight: perf.best_weight + bump, reps: perf.best_reps ?? repsMin ?? 8, rpe: 8 };
-        last = `${fmtW(perf.best_weight)}kg × ${perf.best_reps ?? "—"}`;
+        const lastReps = perf.best_reps ?? loMin;
+        const lastRir = perf.best_rpe != null ? 10 - perf.best_rpe : 2;
+        const canLoad = ex.category !== "bodyweight";
+        // Double progression: hit the top of the rep range with reps to spare → add load
+        // and reset to the bottom of the range; otherwise hold load and add a rep.
+        if (lastReps >= loMax && lastRir >= rirTarget) {
+          suggestion = { weight: perf.best_weight + (canLoad ? 2.5 : 0), reps: loMin, rir: rirTarget };
+        } else {
+          suggestion = { weight: perf.best_weight, reps: Math.min(loMax, lastReps + 1), rir: rirTarget };
+        }
+        last = `${fmtW(perf.best_weight)}kg × ${lastReps}`;
       }
     } catch {
       /* no history yet */
@@ -112,11 +139,13 @@ export default function Workout() {
       localId: uid(),
       weight: null,
       reps: null,
-      rpe: null,
+      rir: null,
+      partials: null,
+      setType: "normal" as SetType,
       warmup: false,
       status: "planned" as const,
     }));
-    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, priorBest1rm, rest, suggestion, sets };
+    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, targetReps: loMin === loMax ? `${loMin}` : `${loMin}–${loMax}`, priorBest1rm, rest, suggestion, sets };
   }
 
   React.useEffect(() => {
@@ -151,25 +180,31 @@ export default function Workout() {
     0
   );
 
-  async function commit(exKey: string, setId: string, vals: { weight: number; reps: number; rpe: number }) {
+  async function commit(exKey: string, setId: string, vals: { weight: number; reps: number; rir: number; partials: number | null; setType: SetType }) {
     if (!session) return;
     const ex = exs.find((e) => e.key === exKey);
     if (!ex) return;
+    const isWarm = vals.setType === "warmup";
     const setIndex = ex.sets.filter((s) => s.status === "done" && !s.warmup).length + 1;
+    // Store RPE too (= 10 − RIR) so existing 1RM/last-performance logic keeps working.
+    const rpe = vals.rir != null ? Math.max(0, Math.min(10, 10 - vals.rir)) : null;
     try {
       const row = await logSet(db, session.id, {
         exercise_id: ex.exerciseId,
         set_index: setIndex,
         weight_kg: vals.weight,
         reps: vals.reps,
-        rpe: vals.rpe,
-        is_warmup: false,
+        rpe,
+        is_warmup: isWarm,
+        set_type: vals.setType,
+        rir: vals.rir,
+        partial_reps: vals.partials,
       });
       setExs((prev) =>
         prev.map((e) =>
           e.key !== exKey
             ? e
-            : { ...e, sets: e.sets.map((s) => (s.localId === setId ? { ...s, ...vals, status: "done" as const, dbId: row.id } : s)) }
+            : { ...e, sets: e.sets.map((s) => (s.localId === setId ? { ...s, weight: vals.weight, reps: vals.reps, rir: vals.rir, partials: vals.partials, setType: vals.setType, warmup: isWarm, status: "done" as const, dbId: row.id } : s)) }
         )
       );
       // Kick off the rest timer for this exercise.
@@ -181,7 +216,7 @@ export default function Workout() {
 
   function addSet(exKey: string) {
     setExs((prev) =>
-      prev.map((e) => (e.key !== exKey ? e : { ...e, sets: [...e.sets, { localId: uid(), weight: null, reps: null, rpe: null, warmup: false, status: "planned" }] }))
+      prev.map((e) => (e.key !== exKey ? e : { ...e, sets: [...e.sets, { localId: uid(), weight: null, reps: null, rir: null, partials: null, setType: "normal" as SetType, warmup: false, status: "planned" as const }] }))
     );
   }
 
@@ -284,7 +319,7 @@ export default function Workout() {
             onClick={exitWorkout}
             style={{ display: "flex", alignItems: "center", gap: 2, background: "transparent", border: "none", color: TOK.muted, fontFamily: "inherit", fontSize: 14, fontWeight: 500, cursor: "pointer", padding: 8 }}
           >
-            <I.ChevL size={18} color={TOK.muted} /> Exit
+            <I.ChevL size={18} color={TOK.muted} /> Beenden
           </button>
           <Tnum style={{ fontSize: 15, fontWeight: 600, color: TOK.text, padding: "0 12px", letterSpacing: "-0.01em" }}>{mmss(elapsed)}</Tnum>
         </div>
@@ -293,19 +328,19 @@ export default function Workout() {
         <div style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "0 16px 12px", fontSize: 12, color: TOK.muted, borderBottom: `1px solid ${TOK.border}` }}>
           <span style={{ color: TOK.muted, fontWeight: 500 }}>{workoutConfig?.name ?? "Workout"}</span>
           <span style={{ color: TOK.dim }}>·</span>
-          <Tnum>{fmtW(Math.round(volume))} kg vol</Tnum>
+          <Tnum>{fmtW(Math.round(volume))} kg Vol</Tnum>
           <span style={{ color: TOK.dim }}>·</span>
           <Tnum>
-            {doneSets} / {totalPlanned} sets
+            {doneSets} / {totalPlanned} Sätze
           </Tnum>
         </div>
 
         {/* Exercise list */}
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 0 96px" }}>
-          {!ready && <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Starting session…</div>}
+          {!ready && <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Session startet…</div>}
           {ready && exs.length === 0 && (
             <div style={{ padding: "32px 24px", textAlign: "center", color: TOK.muted, fontSize: 14, lineHeight: 1.6 }}>
-              Empty workout. Add an exercise to get going.
+              Leeres Workout. Füge eine Übung hinzu, um loszulegen.
             </div>
           )}
           {exs.map((ex) => (
@@ -317,9 +352,19 @@ export default function Workout() {
               accentInk={accent.ink}
               onLog={(setId) => {
                 const s = ex.suggestion;
-                commit(ex.key, setId, { weight: s.weight, reps: s.reps, rpe: s.rpe });
+                commit(ex.key, setId, { weight: s.weight, reps: s.reps, rir: s.rir, partials: null, setType: "normal" });
               }}
-              onAdjust={(setId) => setOverride({ exKey: ex.key, setId, ...ex.suggestion })}
+              onAdjust={(setId) => {
+                const set = ex.sets.find((x) => x.localId === setId);
+                setOverride({
+                  exKey: ex.key, setId,
+                  weight: set?.weight ?? ex.suggestion.weight,
+                  reps: set?.reps ?? ex.suggestion.reps,
+                  rir: set?.rir ?? ex.suggestion.rir,
+                  partials: set?.partials ?? null,
+                  setType: set?.setType ?? "normal",
+                });
+              }}
               onAddSet={() => addSet(ex.key)}
               onSelect={() => setCurrentKey(ex.key)}
             />
@@ -330,7 +375,7 @@ export default function Workout() {
               onClick={() => setPickerOpen(true)}
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "calc(100% - 24px)", margin: "4px 12px 0", height: 48, background: "transparent", border: `1.5px dashed ${TOK.border}`, borderRadius: 12, color: TOK.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
             >
-              <I.Plus size={14} color={TOK.muted} w={2} /> Add exercise
+              <I.Plus size={14} color={TOK.muted} w={2} /> Übung hinzufügen
             </button>
           )}
         </div>
@@ -347,7 +392,7 @@ export default function Workout() {
             disabled={finishing}
             style={{ width: "100%", height: 56, background: accent.hex, color: accent.ink, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: finishing ? 0.5 : 1 }}
           >
-            {isLast || exs.length === 0 ? "Finish Workout" : "Next Exercise"} <I.ArrowR size={16} color={accent.ink} />
+            {isLast || exs.length === 0 ? "Workout beenden" : "Nächste Übung"} <I.ArrowR size={16} color={accent.ink} />
           </button>
         </div>
 
@@ -362,39 +407,39 @@ export default function Workout() {
           onPlates={() => setPlatesOpen(true)}
           onLog={() => {
             if (!override) return;
-            commit(override.exKey, override.setId, { weight: override.weight, reps: override.reps, rpe: override.rpe });
+            commit(override.exKey, override.setId, { weight: override.weight, reps: override.reps, rir: override.rir, partials: override.partials, setType: override.setType });
             setOverride(null);
           }}
         />
         <PlatesSheet open={platesOpen} onClose={() => setPlatesOpen(false)} weight={override?.weight ?? 100} barWeight={barWeight} accentHex={accent.hex} />
 
-        <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} label="Add exercise" title="">
+        <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} label="Übung hinzufügen" title="">
           <ExercisePicker exercises={exercises} accent={accent} onPick={addExercise} recentIds={recentIds} />
         </Sheet>
 
-        <Sheet open={exitPrompt} onClose={() => setExitPrompt(false)} label="End workout" title="">
+        <Sheet open={exitPrompt} onClose={() => setExitPrompt(false)} label="Workout beenden" title="">
           <div style={{ padding: "0 20px 16px" }}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em" }}>End this workout?</div>
+            <div style={{ fontSize: 17, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em" }}>Workout beenden?</div>
             <div style={{ fontSize: 13, color: TOK.muted, marginTop: 6, lineHeight: 1.5 }}>
-              Save it to your history, or discard it entirely.
+              In deinem Verlauf speichern – oder ganz verwerfen.
             </div>
             <button
               onClick={() => { setExitPrompt(false); exitSave(); }}
               style={{ width: "100%", height: 56, marginTop: 20, background: accent.hex, color: accent.ink, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer" }}
             >
-              Save workout
+              Speichern
             </button>
             <button
               onClick={() => { setExitPrompt(false); exitDiscard(); }}
               style={{ width: "100%", height: 52, marginTop: 10, background: "transparent", color: TOK.fail, border: `1px solid ${TOK.border}`, borderRadius: 24, fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer" }}
             >
-              Discard workout
+              Verwerfen
             </button>
             <button
               onClick={() => setExitPrompt(false)}
               style={{ width: "100%", height: 48, marginTop: 6, background: "transparent", color: TOK.muted, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
             >
-              Cancel
+              Abbrechen
             </button>
           </div>
         </Sheet>
@@ -425,8 +470,8 @@ function PRCelebration({ prs, accentHex, accentInk, onClose }: { prs: { name: st
         <span key={i} style={{ position: "absolute", top: -20, left: `${c.left}%`, width: c.size, height: c.size, borderRadius: 2, background: c.color, animation: `gymConfetti ${c.dur}s ${c.delay}s ease-in forwards` }} />
       ))}
       <div className="gym-pop" style={{ fontSize: 56, marginBottom: 8 }}>🏆</div>
-      <div style={{ fontSize: 26, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>New PR{prs.length > 1 ? "s" : ""}!</div>
-      <div style={{ fontSize: 13, color: TOK.muted, marginTop: 4, marginBottom: 20 }}>You beat your previous best</div>
+      <div style={{ fontSize: 26, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>Neuer Rekord{prs.length > 1 ? "e" : ""}!</div>
+      <div style={{ fontSize: 13, color: TOK.muted, marginTop: 4, marginBottom: 20 }}>Du hast deinen Bestwert geknackt</div>
       <div style={{ width: "100%", maxWidth: 300, display: "flex", flexDirection: "column", gap: 8 }}>
         {prs.slice(0, 4).map((p, i) => (
           <div key={i} className="gym-fade" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: TOK.surface, borderRadius: 12, animationDelay: `${i * 90}ms` }}>
@@ -436,7 +481,7 @@ function PRCelebration({ prs, accentHex, accentInk, onClose }: { prs: { name: st
         ))}
       </div>
       <button onClick={onClose} style={{ marginTop: 24, width: "100%", maxWidth: 300, height: 52, background: accentHex, color: accentInk, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
-        Let&apos;s go
+        Weiter
       </button>
     </div>
   );
@@ -479,7 +524,7 @@ function ExerciseCard({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em", lineHeight: 1.2 }}>{ex.name}</div>
-          <div style={{ fontSize: 12, color: TOK.dim, marginTop: 3 }}>{ex.last ? <>Last <span className="tnum">{ex.last}</span></> : "No history yet"}</div>
+          <div style={{ fontSize: 12, color: TOK.dim, marginTop: 3 }}>Ziel {ex.targetReps} Wdh · {ex.suggestion.rir} RIR{ex.last ? <> · zuletzt <span className="tnum">{ex.last}</span></> : ""}</div>
         </div>
         <span className="tnum" style={{ fontSize: 13, color: isCurrent ? accentHex : TOK.dim, fontWeight: 600 }}>
           {doneCount}/{totalCount}
@@ -487,10 +532,10 @@ function ExerciseCard({
       </button>
 
       <div style={{ display: "grid", gridTemplateColumns: GRID, gap: 12, padding: "2px 16px 6px", ...colHead }}>
-        <span>Set</span>
-        <span>Weight</span>
-        <span>Reps</span>
-        <span style={{ textAlign: "right" }}>RPE</span>
+        <span>Satz</span>
+        <span>Gewicht</span>
+        <span>Wdh</span>
+        <span style={{ textAlign: "right" }}>RIR</span>
         <span />
       </div>
 
@@ -517,7 +562,7 @@ function ExerciseCard({
         onClick={onAddSet}
         style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", height: 46, background: "transparent", border: "none", color: TOK.muted, fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
       >
-        <I.Plus size={14} color={TOK.muted} w={2} /> Add Set
+        <I.Plus size={14} color={TOK.muted} w={2} /> Satz hinzufügen
       </button>
     </div>
   );
@@ -527,18 +572,20 @@ function LocalSetRow({ idx, set, accentHex, accentInk, onTap }: { idx: number; s
   const done = set.status === "done";
   const numColor = done ? TOK.text : TOK.dim;
   const labelColor = done ? TOK.muted : TOK.dim;
+  const typed = set.setType !== "normal";
   return (
     <button onClick={done ? undefined : onTap} disabled={done} style={{ display: "grid", gridTemplateColumns: GRID, alignItems: "center", gap: 12, width: "100%", height: 56, padding: "0 16px", background: "transparent", border: "none", textAlign: "left", cursor: done ? "default" : "pointer", fontFamily: "inherit" }}>
-      <span className="tnum" style={{ color: done ? TOK.muted : TOK.dim, fontSize: 13, fontWeight: 500 }}>{set.warmup ? "W" : idx}</span>
+      <span className="tnum" style={{ color: typed ? setColor(set.setType) : done ? TOK.muted : TOK.dim, fontSize: 13, fontWeight: typed ? 700 : 500 }}>{setMark(set.setType, idx)}</span>
       <span className="tnum" style={{ color: numColor, fontSize: 17, fontWeight: 500, letterSpacing: "-0.01em" }}>
         {fmtW(set.weight)}
         {set.weight != null && <span style={{ color: labelColor, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>kg</span>}
       </span>
       <span className="tnum" style={{ color: numColor, fontSize: 17, fontWeight: 500 }}>
         {set.reps != null ? set.reps : "—"}
-        {set.reps != null && <span style={{ color: labelColor, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>reps</span>}
+        {set.partials ? <span style={{ color: setColor("partial"), fontSize: 12, marginLeft: 2, fontWeight: 600 }}>+{set.partials}</span> : null}
+        {set.reps != null && <span style={{ color: labelColor, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>Wdh</span>}
       </span>
-      <span className="tnum" style={{ color: done ? TOK.muted : TOK.dim, fontSize: 13, textAlign: "right" }}>{set.rpe != null ? `@${set.rpe}` : ""}</span>
+      <span className="tnum" style={{ color: done ? TOK.muted : TOK.dim, fontSize: 13, textAlign: "right" }}>{set.rir != null ? `${set.rir}` : ""}</span>
       <span style={{ display: "flex", justifyContent: "flex-end" }}>
         {done ? (
           <span className="gym-pop" style={{ width: 24, height: 24, borderRadius: 999, background: accentHex, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -552,11 +599,11 @@ function LocalSetRow({ idx, set, accentHex, accentInk, onTap }: { idx: number; s
   );
 }
 
-function CoachBox({ idx, suggestion, accentHex, accentInk, onLog, onAdjust }: { idx: number; suggestion: { weight: number; reps: number; rpe: number }; accentHex: string; accentInk: string; onLog: () => void; onAdjust: () => void }) {
+function CoachBox({ idx, suggestion, accentHex, accentInk, onLog, onAdjust }: { idx: number; suggestion: Suggestion; accentHex: string; accentInk: string; onLog: () => void; onAdjust: () => void }) {
   return (
     <div style={{ border: `1px solid ${accentHex}`, borderRadius: 18, margin: "6px 12px 12px", overflow: "hidden" }}>
       <button onClick={onAdjust} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", padding: "13px 16px 12px", fontFamily: "inherit" }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: accentHex }}>Coach Suggests</div>
+        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: accentHex }}>Coach-Vorschlag</div>
         <div style={{ display: "grid", gridTemplateColumns: GRID, alignItems: "baseline", gap: 12, marginTop: 9 }}>
           <span className="tnum" style={{ color: TOK.muted, fontSize: 13, fontWeight: 500 }}>{idx}</span>
           <span className="tnum" style={{ color: TOK.text, fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>
@@ -565,15 +612,15 @@ function CoachBox({ idx, suggestion, accentHex, accentInk, onLog, onAdjust }: { 
           </span>
           <span className="tnum" style={{ color: TOK.text, fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>
             {suggestion.reps}
-            <span style={{ color: TOK.muted, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>reps</span>
+            <span style={{ color: TOK.muted, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>Wdh</span>
           </span>
-          <span className="tnum" style={{ color: TOK.muted, fontSize: 13, textAlign: "right" }}>@{suggestion.rpe}</span>
+          <span className="tnum" style={{ color: TOK.muted, fontSize: 13, textAlign: "right" }}>{suggestion.rir} RIR</span>
           <span />
         </div>
       </button>
       <div style={{ padding: "0 12px 12px" }}>
         <button onClick={onLog} style={{ width: "100%", height: 48, background: accentHex, color: accentInk, border: "none", borderRadius: 14, fontFamily: "inherit", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-          Log Set <I.ArrowR size={15} color={accentInk} />
+          Satz loggen <I.ArrowR size={15} color={accentInk} />
         </button>
       </div>
     </div>
@@ -614,11 +661,11 @@ function SetLoggerSheet({
   onPlates,
 }: {
   open: boolean;
-  draft: { exKey: string; setId: string; weight: number; reps: number; rpe: number } | null;
+  draft: { exKey: string; setId: string; weight: number; reps: number; rir: number; partials: number | null; setType: SetType } | null;
   accentHex: string;
   accentInk: string;
   onClose: () => void;
-  onChange: (d: { exKey: string; setId: string; weight: number; reps: number; rpe: number }) => void;
+  onChange: (d: { exKey: string; setId: string; weight: number; reps: number; rir: number; partials: number | null; setType: SetType }) => void;
   onLog: () => void;
   onPlates: () => void;
 }) {
@@ -627,14 +674,31 @@ function SetLoggerSheet({
       {draft && (
         <div style={{ padding: "0 20px 16px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em" }}>Log set</div>
-            <button onClick={onClose} style={{ background: "transparent", border: "none", color: TOK.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: "4px 0" }}>Cancel</button>
+            <div style={{ fontSize: 17, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em" }}>Satz loggen</div>
+            <button onClick={onClose} style={{ background: "transparent", border: "none", color: TOK.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: "4px 0" }}>Abbrechen</button>
           </div>
-          <Stepper label="Weight" unit="kg" value={draft.weight} step={2.5} onChange={(v) => onChange({ ...draft, weight: v })} onTapValue={onPlates} />
-          <Stepper label="Reps" value={draft.reps} step={1} onChange={(v) => onChange({ ...draft, reps: v })} />
-          <Stepper label="RPE" value={draft.rpe} step={0.5} onChange={(v) => onChange({ ...draft, rpe: Math.min(10, v) })} />
+          {/* Set-type selector */}
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", margin: "14px -20px 0", padding: "0 20px 2px" }}>
+            {SET_TYPES.map((t) => {
+              const sel = draft.setType === t.id;
+              return (
+                <button key={t.id} onClick={() => onChange({ ...draft, setType: t.id })} style={{
+                  flexShrink: 0, height: 34, padding: "0 14px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", WebkitTapHighlightColor: "transparent",
+                  background: sel ? (t.id === "normal" ? TOK.text : t.color) : TOK.surface,
+                  color: sel ? "#0a0a0a" : TOK.muted,
+                }}>{t.label}</button>
+              );
+            })}
+          </div>
+          <Stepper label="Gewicht" unit="kg" value={draft.weight} step={2.5} onChange={(v) => onChange({ ...draft, weight: v })} onTapValue={onPlates} />
+          <Stepper label="Wiederholungen" value={draft.reps} step={1} onChange={(v) => onChange({ ...draft, reps: v })} />
+          {draft.setType === "partial" && (
+            <Stepper label="Partial-Wdh" value={draft.partials ?? 0} step={1} onChange={(v) => onChange({ ...draft, partials: Math.max(0, v) })} />
+          )}
+          <Stepper label="RIR · Wdh in Reserve" value={draft.rir} step={1} onChange={(v) => onChange({ ...draft, rir: Math.max(0, Math.min(10, v)) })} />
           <button onClick={onLog} style={{ width: "100%", height: 56, marginTop: 22, background: accentHex, color: accentInk, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            Log this set <I.ArrowR size={16} color={accentInk} />
+            Satz speichern <I.ArrowR size={16} color={accentInk} />
           </button>
         </div>
       )}
@@ -670,17 +734,17 @@ function PlatesSheet({ open, onClose, weight, barWeight, accentHex }: { open: bo
     counts.get(p.kg)!.count++;
   });
   return (
-    <Sheet open={open} onClose={onClose} label="Plate calculator" title="">
+    <Sheet open={open} onClose={onClose} label="Hantelscheiben" title="">
       <div style={{ padding: "0 20px 16px" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ fontSize: 13, color: TOK.muted }}>{fmtW(barWeight)} kg barbell · per side</div>
+          <div style={{ fontSize: 13, color: TOK.muted }}>{fmtW(barWeight)} kg Stange · pro Seite</div>
           <Tnum style={{ fontSize: 26, fontWeight: 600, color: accentHex }}>
             {fmtW(weight)}<span style={{ fontSize: 14, color: TOK.muted, marginLeft: 4, fontWeight: 400 }}>kg</span>
           </Tnum>
         </div>
         <div style={{ background: TOK.bg, borderRadius: 12, padding: "24px 16px", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 150 }}>
           {perSide <= 0 ? (
-            <div style={{ color: TOK.dim, fontSize: 13 }}>Bar only</div>
+            <div style={{ color: TOK.dim, fontSize: 13 }}>Nur Stange</div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
               {plates.map((p, i) => (
@@ -699,9 +763,9 @@ function PlatesSheet({ open, onClose, weight, barWeight, accentHex }: { open: bo
               <Tnum>{p.count} × {p.kg}</Tnum>
             </div>
           ))}
-          {rem > 0.01 && <div style={{ padding: "6px 10px", background: "rgba(239,68,68,0.15)", color: TOK.fail, borderRadius: 8, fontSize: 12 }}>−{rem.toFixed(2)} kg short</div>}
+          {rem > 0.01 && <div style={{ padding: "6px 10px", background: "rgba(239,68,68,0.15)", color: TOK.fail, borderRadius: 8, fontSize: 12 }}>−{rem.toFixed(2)} kg zu wenig</div>}
         </div>
-        <button onClick={onClose} style={{ width: "100%", height: 52, marginTop: 18, background: TOK.surface, color: TOK.text, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Done</button>
+        <button onClick={onClose} style={{ width: "100%", height: 52, marginTop: 18, background: TOK.surface, color: TOK.text, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Fertig</button>
       </div>
     </Sheet>
   );
@@ -716,7 +780,7 @@ function RestTimerBar({ timer, accentHex, accentInk, onAdjust, onSkip }: { timer
     <div style={{ position: "absolute", left: 12, right: 12, bottom: 96, zIndex: 35, background: TOK.surface2, borderRadius: 18, padding: "12px 14px 14px", boxShadow: "0 16px 50px rgba(0,0,0,0.6)", border: `1px solid ${done ? TOK.pr : TOK.border}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: done ? TOK.pr : accentHex }}>
-          {done ? "Rest done — next set" : "Resting"}
+          {done ? "Pause vorbei — nächster Satz" : "Pause"}
         </span>
         <Tnum style={{ fontSize: 24, fontWeight: 600, color: TOK.text, letterSpacing: "-0.02em" }}>{mmss(Math.max(0, timer.remaining))}</Tnum>
       </div>
@@ -726,7 +790,7 @@ function RestTimerBar({ timer, accentHex, accentInk, onAdjust, onSkip }: { timer
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => onAdjust(-15)} style={timerBtn}>−15s</button>
         <button onClick={() => onAdjust(15)} style={timerBtn}>+15s</button>
-        <button onClick={onSkip} style={{ ...timerBtn, background: accentHex, color: accentInk }}>{done ? "Dismiss" : "Skip"}</button>
+        <button onClick={onSkip} style={{ ...timerBtn, background: accentHex, color: accentInk }}>{done ? "Schließen" : "Überspringen"}</button>
       </div>
     </div>
   );

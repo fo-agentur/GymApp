@@ -14,6 +14,7 @@ export type RoutineExRow = {
   target_reps_min: number | null;
   target_reps_max: number | null;
   target_rpe: number | null;
+  target_rir: number | null;
   rest_seconds: number | null;
 };
 export type RoutineFull = Routine & { routine_exercises: RoutineExRow[] };
@@ -169,7 +170,10 @@ export async function startSession(
 export async function logSet(
   db: DB,
   sessionId: string,
-  s: { exercise_id: string; set_index: number; weight_kg: number | null; reps: number | null; rpe: number | null; is_warmup: boolean }
+  s: {
+    exercise_id: string; set_index: number; weight_kg: number | null; reps: number | null; rpe: number | null; is_warmup: boolean;
+    set_type?: string; rir?: number | null; partial_reps?: number | null;
+  }
 ): Promise<LoggedSet> {
   const { data, error } = await db
     .from("sets")
@@ -181,6 +185,9 @@ export async function logSet(
       reps: s.reps,
       rpe: s.rpe,
       is_warmup: s.is_warmup,
+      set_type: s.set_type ?? (s.is_warmup ? "warmup" : "normal"),
+      rir: s.rir ?? null,
+      partial_reps: s.partial_reps ?? null,
     })
     .select()
     .single();
