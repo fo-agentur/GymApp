@@ -107,7 +107,7 @@ export default function Today() {
   const weekSets = muscleSetTotal || thisWeek.reduce((n, s) => n + (s.total_sets ?? 0), 0);
   const suggested = routines[0] ?? null;
   const startSuggested = () =>
-    suggested ? startWorkout({ routineId: suggested.id, name: suggested.name }) : startWorkout({ routineId: null, name: "Quick Workout" });
+    suggested ? goto("workout-overview", suggested.id) : startWorkout({ routineId: null, name: "Quick Workout" });
 
   const dayLabels = ["M", "D", "M", "D", "F", "S", "S"];
 
@@ -178,7 +178,7 @@ export default function Today() {
               style={{ marginTop: 14, width: "100%", height: 44, borderRadius: 12, background: TOK.primarySoft, color: TOK.text, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, WebkitTapHighlightColor: "transparent" }}
             >
               <I.Dumbbell size={16} color={TOK.text} w={2} />
-              {suggested ? `${suggested.name} starten` : "Workout starten"}
+              {suggested ? suggested.name : "Workout starten"}
             </button>
           </div>
         </div>

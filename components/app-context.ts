@@ -13,6 +13,7 @@ export type ScreenId =
   | "exercise-detail"
   | "routines"
   | "routine-editor"
+  | "workout-overview"
   | "progress"
   | "food"
   | "profile"

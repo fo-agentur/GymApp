@@ -15,6 +15,7 @@ import Library from "./screens/Library";
 import ExerciseDetail from "./screens/ExerciseDetail";
 import Routines from "./screens/Routines";
 import RoutineEditor from "./screens/RoutineEditor";
+import WorkoutOverview from "./screens/WorkoutOverview";
 import Progress from "./screens/Progress";
 import Food from "./screens/Food";
 import Profile from "./screens/Profile";
@@ -65,7 +66,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     setParams((prev) => {
       if (screen === "session-detail") return { ...prev, sessionId: param };
       if (screen === "exercise-detail") return { ...prev, exerciseId: param };
-      if (screen === "routine-editor") return { ...prev, routineId: param };
+      if (screen === "routine-editor" || screen === "workout-overview") return { ...prev, routineId: param };
       return prev;
     });
     setActive(screen);
@@ -109,6 +110,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     case "exercise-detail": body = <ExerciseDetail />; break;
     case "routines": body = <Routines />; break;
     case "routine-editor": body = <RoutineEditor />; break;
+    case "workout-overview": body = <WorkoutOverview />; break;
     case "progress": body = <Progress />; break;
     case "food": body = <Food />; break;
     case "profile": body = <Profile />; break;
