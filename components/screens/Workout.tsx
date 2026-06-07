@@ -13,20 +13,11 @@ import {
   fetchProfile,
 } from "@/lib/data";
 import type { WorkoutSession, Exercise } from "@/lib/supabase/types";
-import { TOK, MACRO, Tnum, I, Sheet, fmtW, mmss, epley1rm, rirColor } from "@/lib/design";
+import { TOK, Tnum, I, Sheet, fmtW, mmss, epley1rm, rirColor } from "@/lib/design";
+import { loadExerciseDB } from "@/lib/exercise-db";
 import ExercisePicker from "./ExercisePicker";
 
 export type SetType = "normal" | "warmup" | "drop" | "failure" | "myorep" | "partial";
-const SET_TYPES: { id: SetType; label: string; mark: string; color: string }[] = [
-  { id: "normal", label: "Normal", mark: "", color: TOK.muted },
-  { id: "warmup", label: "Aufwärmen", mark: "W", color: MACRO.kcal },
-  { id: "drop", label: "Dropsatz", mark: "D", color: MACRO.protein },
-  { id: "failure", label: "Versagen", mark: "F", color: TOK.fail },
-  { id: "myorep", label: "Myo-Reps", mark: "M", color: MACRO.carbs },
-  { id: "partial", label: "Partials", mark: "P", color: MACRO.fat },
-];
-const setMark = (t: SetType, idx: number) => (t === "normal" ? String(idx) : SET_TYPES.find((x) => x.id === t)?.mark ?? String(idx));
-const setColor = (t: SetType) => SET_TYPES.find((x) => x.id === t)?.color ?? TOK.muted;
 
 type WSet = {
   localId: string;
@@ -46,6 +37,7 @@ type WEx = {
   name: string;
   muscle: string;
   category: string;
+  image: string | null;
   last: string | null;
   targetReps: string;
   priorBest1rm: number;
@@ -57,15 +49,19 @@ type WEx = {
 let counter = 0;
 const uid = () => `l${++counter}`;
 
+// Which cell of a set the keypad is currently editing.
+type Focus = { setId: string; field: "weight" | "reps" | "rir" } | null;
+
 export default function Workout() {
   const { db, userId, accent, exMap, exercises, workoutConfig, goto } = useApp();
   const [session, setSession] = React.useState<WorkoutSession | null>(null);
   const [exs, setExs] = React.useState<WEx[]>([]);
   const [currentKey, setCurrentKey] = React.useState<string | null>(null);
   const [elapsed, setElapsed] = React.useState(0);
-  const [override, setOverride] = React.useState<{ exKey: string; setId: string; weight: number; reps: number; rir: number; partials: number | null; setType: SetType } | null>(null);
+  const [focus, setFocus] = React.useState<Focus>(null);
+  const [buffer, setBuffer] = React.useState("");
   const [platesOpen, setPlatesOpen] = React.useState(false);
-  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [pickerMode, setPickerMode] = React.useState<"add" | "swap" | null>(null);
   const [finishing, setFinishing] = React.useState(false);
   const [ready, setReady] = React.useState(false);
   const [restTimer, setRestTimer] = React.useState<{ total: number; remaining: number } | null>(null);
@@ -98,7 +94,6 @@ export default function Workout() {
       setSession(s);
       const built: WEx[] = [];
       if (workoutConfig?.programWorkoutId) {
-        // Program-driven: load the day's prescribed exercises + targets.
         const pexs = await fetchProgramWorkoutExercises(db, workoutConfig.programWorkoutId);
         for (const pe of pexs) {
           const ex = exMap[pe.exercise_id];
@@ -136,8 +131,6 @@ export default function Workout() {
         const lastReps = perf.best_reps ?? loMin;
         const lastRir = perf.best_rpe != null ? 10 - perf.best_rpe : 2;
         const canLoad = ex.category !== "bodyweight";
-        // Double progression: hit the top of the rep range with reps to spare → add load
-        // and reset to the bottom of the range; otherwise hold load and add a rep.
         if (lastReps >= loMax && lastRir >= rirTarget) {
           suggestion = { weight: perf.best_weight + (canLoad ? 2.5 : 0), reps: loMin, rir: rirTarget };
         } else {
@@ -148,17 +141,26 @@ export default function Workout() {
     } catch {
       /* no history yet */
     }
+    let image: string | null = null;
+    try {
+      const dbx = await loadExerciseDB();
+      image = dbx[ex.name]?.image ?? null;
+    } catch {
+      /* no image */
+    }
+    // Pre-fill every planned set with the coach suggestion so the table reads
+    // like a prescription you tick off (MacroFactor "Auto" behaviour).
     const sets: WSet[] = Array.from({ length: Math.max(1, targetSets) }, () => ({
       localId: uid(),
-      weight: null,
-      reps: null,
-      rir: null,
+      weight: suggestion.weight,
+      reps: suggestion.reps,
+      rir: suggestion.rir,
       partials: null,
       setType: "normal" as SetType,
       warmup: false,
       status: "planned" as const,
     }));
-    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, last, targetReps: loMin === loMax ? `${loMin}` : `${loMin}–${loMax}`, priorBest1rm, rest, suggestion, sets };
+    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, image, last, targetReps: loMin === loMax ? `${loMin}` : `${loMin}–${loMax}`, priorBest1rm, rest, suggestion, sets };
   }
 
   React.useEffect(() => {
@@ -166,7 +168,7 @@ export default function Workout() {
     return () => clearInterval(t);
   }, []);
 
-  // Rest countdown — ticks down each second; fires a cue + auto-hides at 0.
+  // Rest countdown.
   React.useEffect(() => {
     if (!restTimer) return;
     if (restTimer.remaining <= 0) {
@@ -186,6 +188,10 @@ export default function Workout() {
     });
   }
 
+  const current = exs.find((e) => e.key === currentKey) ?? null;
+  const curIdx = exs.findIndex((e) => e.key === currentKey);
+  const isLast = curIdx === exs.length - 1;
+
   const doneSets = exs.reduce((n, e) => n + e.sets.filter((s) => s.status === "done" && !s.warmup).length, 0);
   const totalPlanned = exs.reduce((n, e) => n + e.sets.length, 0);
   const volume = exs.reduce(
@@ -193,59 +199,119 @@ export default function Workout() {
     0
   );
 
-  async function commit(exKey: string, setId: string, vals: { weight: number; reps: number; rir: number; partials: number | null; setType: SetType }) {
-    if (!session) return;
-    const ex = exs.find((e) => e.key === exKey);
-    if (!ex) return;
-    const isWarm = vals.setType === "warmup";
-    const setIndex = ex.sets.filter((s) => s.status === "done" && !s.warmup).length + 1;
-    // Store RPE too (= 10 − RIR) so existing 1RM/last-performance logic keeps working.
-    const rpe = vals.rir != null ? Math.max(0, Math.min(10, 10 - vals.rir)) : null;
+  // ── Mutators ──────────────────────────────────────────────────
+  function patchSet(setId: string, patch: Partial<WSet>) {
+    setExs((prev) =>
+      prev.map((e) =>
+        e.key !== currentKey ? e : { ...e, sets: e.sets.map((s) => (s.localId === setId ? { ...s, ...patch } : s)) }
+      )
+    );
+  }
+
+  function focusCell(setId: string, field: "weight" | "reps" | "rir") {
+    setFocus({ setId, field });
+    const set = current?.sets.find((s) => s.localId === setId);
+    const v = set ? (field === "weight" ? set.weight : field === "reps" ? set.reps : set.rir) : null;
+    setBuffer(v != null ? String(fmtW(v)) : "");
+  }
+
+  function typeDigit(d: string) {
+    if (!focus) return;
+    let next = buffer + d;
+    if (focus.field !== "weight" && d === ".") return;
+    if (d === "." && buffer.includes(".")) return;
+    if (next.length > 6) return;
+    setBuffer(next);
+    const num = parseFloat(next);
+    patchSet(focus.setId, { [focus.field]: Number.isNaN(num) ? null : num } as Partial<WSet>);
+  }
+
+  function backspace() {
+    if (!focus) return;
+    const next = buffer.slice(0, -1);
+    setBuffer(next);
+    const num = parseFloat(next);
+    patchSet(focus.setId, { [focus.field]: next === "" || Number.isNaN(num) ? null : num } as Partial<WSet>);
+  }
+
+  function setRir(setId: string, value: number) {
+    patchSet(setId, { rir: value });
+    if (focus?.setId === setId && focus.field === "rir") setBuffer(String(value));
+  }
+
+  // Commit (or re-save) a row, then advance to the next planned set.
+  async function commitRow(setId: string) {
+    if (!session || !current) return;
+    const ex = current;
+    const set = ex.sets.find((s) => s.localId === setId);
+    if (!set) return;
+    const weight = set.weight ?? ex.suggestion.weight;
+    const reps = set.reps ?? ex.suggestion.reps;
+    const rir = set.rir ?? ex.suggestion.rir;
+    const isWarm = set.setType === "warmup";
+    const setIndex = ex.sets.filter((s) => s.status === "done" && !s.warmup && s.localId !== setId).length + 1;
+    const rpe = rir != null ? Math.max(0, Math.min(10, 10 - rir)) : null;
     try {
       const row = await logSet(db, session.id, {
         exercise_id: ex.exerciseId,
         set_index: setIndex,
-        weight_kg: vals.weight,
-        reps: vals.reps,
+        weight_kg: weight,
+        reps,
         rpe,
         is_warmup: isWarm,
-        set_type: vals.setType,
-        rir: vals.rir,
-        partial_reps: vals.partials,
+        set_type: set.setType,
+        rir,
+        partial_reps: set.partials,
       });
-      setExs((prev) =>
-        prev.map((e) =>
-          e.key !== exKey
-            ? e
-            : { ...e, sets: e.sets.map((s) => (s.localId === setId ? { ...s, weight: vals.weight, reps: vals.reps, rir: vals.rir, partials: vals.partials, setType: vals.setType, warmup: isWarm, status: "done" as const, dbId: row.id } : s)) }
-        )
-      );
-      // Kick off the rest timer for this exercise.
-      setRestTimer({ total: ex.rest, remaining: ex.rest });
+      patchSet(setId, { weight, reps, rir, status: "done", dbId: row.id });
+      if (!isWarm) setRestTimer({ total: ex.rest, remaining: ex.rest });
     } catch (err) {
       alert("Could not save set: " + (err as Error).message);
+      return;
     }
+    // Advance focus to the next not-done set's weight cell.
+    const nextSet = ex.sets.find((s) => s.localId !== setId && s.status !== "done");
+    if (nextSet) focusCell(nextSet.localId, "weight");
+    else setFocus(null);
   }
 
-  function addSet(exKey: string) {
+  function addSet() {
+    if (!current) return;
+    const s = current.suggestion;
+    const newId = uid();
     setExs((prev) =>
-      prev.map((e) => (e.key !== exKey ? e : { ...e, sets: [...e.sets, { localId: uid(), weight: null, reps: null, rir: null, partials: null, setType: "normal" as SetType, warmup: false, status: "planned" as const }] }))
+      prev.map((e) =>
+        e.key !== currentKey
+          ? e
+          : { ...e, sets: [...e.sets, { localId: newId, weight: s.weight, reps: s.reps, rir: s.rir, partials: null, setType: "normal" as SetType, warmup: false, status: "planned" as const }] }
+      )
     );
   }
 
-  function addExercise(ex: Exercise) {
-    setPickerOpen(false);
+  function onPick(ex: Exercise) {
+    const mode = pickerMode;
+    setPickerMode(null);
     (async () => {
       const wex = await buildEx(ex, 3, 8, 8);
-      setExs((prev) => [...prev, wex]);
-      if (!currentKey) setCurrentKey(wex.key);
+      if (mode === "swap" && currentKey) {
+        setExs((prev) => prev.map((e) => (e.key === currentKey ? wex : e)));
+        setCurrentKey(wex.key);
+      } else {
+        setExs((prev) => [...prev, wex]);
+        setCurrentKey((k) => k ?? wex.key);
+      }
+      setFocus(null);
     })();
   }
 
+  function gotoExercise(key: string) {
+    setCurrentKey(key);
+    setFocus(null);
+  }
+
   function nextExercise() {
-    const idx = exs.findIndex((e) => e.key === currentKey);
-    const nxt = exs[idx + 1];
-    if (nxt) setCurrentKey(nxt.key);
+    const nxt = exs[curIdx + 1];
+    if (nxt) gotoExercise(nxt.key);
   }
 
   async function finish() {
@@ -262,7 +328,6 @@ export default function Workout() {
       duration_seconds: elapsed,
       notes: null,
     });
-    // PR detection: best estimated 1RM this session beats the prior best 1RM.
     const prs: { name: string; weight: number }[] = [];
     for (const e of exs) {
       const doneSetsEx = e.sets.filter((s) => s.status === "done" && !s.warmup);
@@ -284,441 +349,344 @@ export default function Workout() {
   }
 
   async function exitWorkout() {
-    if (!session) {
-      goto("today");
-      return;
-    }
+    if (!session) return goto("today");
     if (doneSets === 0) {
       await discardSession(db, session.id);
-      goto("today");
-      return;
+      return goto("today");
     }
-    // With logged sets, ask whether to save or discard.
     setExitPrompt(true);
   }
-
   async function exitSave() {
-    if (!session) {
-      goto("today");
-      return;
-    }
-    await finishSession(db, session.id, {
-      total_volume_kg: Math.round(volume * 100) / 100,
-      total_sets: doneSets,
-      duration_seconds: elapsed,
-      notes: null,
-    });
+    if (!session) return goto("today");
+    await finishSession(db, session.id, { total_volume_kg: Math.round(volume * 100) / 100, total_sets: doneSets, duration_seconds: elapsed, notes: null });
     goto("today");
   }
-
   async function exitDiscard() {
-    if (!session) {
-      goto("today");
-      return;
-    }
+    if (!session) return goto("today");
     await discardSession(db, session.id);
     goto("today");
   }
 
-  const isLast = currentKey != null && exs.findIndex((e) => e.key === currentKey) === exs.length - 1;
+  const setPos = current ? current.sets.findIndex((s) => s.status !== "done") : -1;
+  const activeSetNo = setPos < 0 ? (current?.sets.length ?? 0) : setPos + 1;
 
   return (
     <>
       <PhoneStatus />
       <div className="phone-scroll-area" style={{ position: "absolute", inset: "47px 0 0 0", display: "flex", flexDirection: "column", background: TOK.bg }}>
-        {/* Top bar */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 8px 8px 6px" }}>
-          <button
-            onClick={exitWorkout}
-            style={{ display: "flex", alignItems: "center", gap: 2, background: "transparent", border: "none", color: TOK.muted, fontFamily: "inherit", fontSize: 14, fontWeight: 500, cursor: "pointer", padding: 8 }}
-          >
-            <I.ChevL size={18} color={TOK.muted} /> Beenden
+        {/* Top bar: menu · elapsed · rest */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px 6px 10px" }}>
+          <button onClick={exitWorkout} style={{ ...iconBtn }} aria-label="Beenden">
+            <I.ChevL size={22} color={TOK.text} />
           </button>
-          <Tnum style={{ fontSize: 15, fontWeight: 600, color: TOK.text, padding: "0 12px", letterSpacing: "-0.01em" }}>{mmss(elapsed)}</Tnum>
+          <Tnum style={{ fontSize: 17, fontWeight: 700, color: TOK.text, letterSpacing: "-0.01em" }}>{hhmmss(elapsed)}</Tnum>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 999, background: restTimer ? TOK.accentSoft : "transparent" }}>
+            <I.History size={15} color={restTimer ? TOK.accent : TOK.dim} />
+            <Tnum style={{ fontSize: 14, fontWeight: 700, color: restTimer ? TOK.accent : TOK.dim }}>{restTimer ? mmss(Math.max(0, restTimer.remaining)) : "0:00"}</Tnum>
+          </div>
         </div>
 
-        {/* Info strip */}
-        <div style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "0 16px 12px", fontSize: 12, color: TOK.muted, borderBottom: `1px solid ${TOK.border}` }}>
-          <span style={{ color: TOK.muted, fontWeight: 500 }}>{workoutConfig?.name ?? "Workout"}</span>
-          <span style={{ color: TOK.dim }}>·</span>
-          <Tnum>{fmtW(Math.round(volume))} kg Vol</Tnum>
-          <span style={{ color: TOK.dim }}>·</span>
-          <Tnum>
-            {doneSets} / {totalPlanned} Sätze
-          </Tnum>
-        </div>
-
-        {/* Exercise list */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "12px 0 96px" }}>
-          {!ready && <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Session startet…</div>}
-          {ready && exs.length === 0 && (
-            <div style={{ padding: "32px 24px", textAlign: "center", color: TOK.muted, fontSize: 14, lineHeight: 1.6 }}>
-              Leeres Workout. Füge eine Übung hinzu, um loszulegen.
+        {!ready ? (
+          <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Session startet…</div>
+        ) : exs.length === 0 ? (
+          <div style={{ padding: "40px 24px", textAlign: "center", color: TOK.muted, fontSize: 14, lineHeight: 1.6 }}>
+            Leeres Workout.
+            <div style={{ marginTop: 14 }}>
+              <button onClick={() => setPickerMode("add")} style={{ height: 44, padding: "0 18px", borderRadius: 999, background: accent.hex, color: accent.ink, border: "none", fontFamily: "inherit", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Übung hinzufügen</button>
             </div>
-          )}
-          {exs.map((ex) => (
-            <ExerciseCard
-              key={ex.key}
-              ex={ex}
-              isCurrent={ex.key === currentKey}
-              accentHex={accent.hex}
-              accentInk={accent.ink}
-              onLog={(setId) => {
-                const s = ex.suggestion;
-                commit(ex.key, setId, { weight: s.weight, reps: s.reps, rir: s.rir, partials: null, setType: "normal" });
-              }}
-              onAdjust={(setId) => {
-                const set = ex.sets.find((x) => x.localId === setId);
-                setOverride({
-                  exKey: ex.key, setId,
-                  weight: set?.weight ?? ex.suggestion.weight,
-                  reps: set?.reps ?? ex.suggestion.reps,
-                  rir: set?.rir ?? ex.suggestion.rir,
-                  partials: set?.partials ?? null,
-                  setType: set?.setType ?? "normal",
-                });
-              }}
-              onAddSet={() => addSet(ex.key)}
-              onSelect={() => setCurrentKey(ex.key)}
-            />
-          ))}
+          </div>
+        ) : current ? (
+          <>
+            {/* Exercise thumbnail track */}
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 14px 8px", flexShrink: 0 }}>
+              {exs.map((e) => {
+                const sel = e.key === currentKey;
+                const allDone = e.sets.every((s) => s.status === "done");
+                return (
+                  <button key={e.key} onClick={() => gotoExercise(e.key)} style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
+                    <Thumb image={e.image} name={e.name} size={52} dim={!sel} done={allDone && !sel} />
+                    <div style={{ width: 40, height: 2.5, borderRadius: 2, background: sel ? TOK.text : "transparent" }} />
+                  </button>
+                );
+              })}
+              <button onClick={() => setPickerMode("add")} style={{ flexShrink: 0, width: 52, height: 52, borderRadius: 13, background: TOK.surface2, border: `1px solid ${TOK.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", marginTop: 0 }} aria-label="Übung hinzufügen">
+                <I.Plus size={20} color={TOK.muted} w={2} />
+              </button>
+            </div>
 
-          {ready && (
-            <button
-              onClick={() => setPickerOpen(true)}
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "calc(100% - 24px)", margin: "4px 12px 0", height: 48, background: "transparent", border: `1.5px dashed ${TOK.border}`, borderRadius: 12, color: TOK.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-            >
-              <I.Plus size={14} color={TOK.muted} w={2} /> Übung hinzufügen
-            </button>
-          )}
-        </div>
+            {/* Title */}
+            <div style={{ padding: "2px 16px 10px" }}>
+              <div style={{ fontSize: 21, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em", lineHeight: 1.15 }}>{current.name}</div>
+              <div style={{ fontSize: 13, color: TOK.muted, marginTop: 2 }}>Satz {Math.min(activeSetNo, current.sets.length)} von {current.sets.length}</div>
+            </div>
 
-        {/* Rest timer */}
-        {restTimer && (
-          <RestTimerBar timer={restTimer} accentHex={accent.hex} accentInk={accent.ink} onAdjust={adjustRest} onSkip={() => setRestTimer(null)} />
-        )}
+            {/* Action chips */}
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 14px 12px", flexShrink: 0 }}>
+              <ActionChip icon={<I.Note size={15} color={TOK.text} />} label="Info" onTap={() => goto("exercise-detail", current.exerciseId)} />
+              <ActionChip icon={<I.Flame size={15} color={warmActive(current) ? "#fff" : TOK.text} />} label="Aufwärmen" active={warmActive(current)} onTap={() => toggleWarmup()} />
+              <ActionChip icon={<I.Routine size={15} color={TOK.text} />} label="Tauschen" onTap={() => setPickerMode("swap")} />
+              <ActionChip icon={<I.Grid size={15} color={TOK.text} />} label="Scheiben" onTap={() => setPlatesOpen(true)} />
+            </div>
 
-        {/* Pinned action */}
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 12px 26px", background: "linear-gradient(to bottom, transparent 0%, var(--c-bg) 45%)", pointerEvents: "none" }}>
-          <button
-            onClick={isLast || exs.length === 0 ? finish : nextExercise}
-            disabled={finishing}
-            style={{ width: "100%", height: 56, background: accent.hex, color: accent.ink, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: finishing ? 0.5 : 1 }}
-          >
-            {isLast || exs.length === 0 ? "Workout beenden" : "Nächste Übung"} <I.ArrowR size={16} color={accent.ink} />
-          </button>
-        </div>
+            {/* Set table */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: TABLE_GRID, alignItems: "center", gap: 8, padding: "2px 8px 8px", ...colHead }}>
+                <span>Satz</span>
+                <span>Ziel</span>
+                <span style={{ textAlign: "center" }}>kg</span>
+                <span style={{ textAlign: "center" }}>Wdh</span>
+                <span style={{ textAlign: "center" }}>✓</span>
+              </div>
+              {current.sets.map((s, i) => (
+                <SetTableRow
+                  key={s.localId}
+                  no={i + 1}
+                  set={s}
+                  target={`${fmtW(current.suggestion.weight)} × ${current.targetReps}`}
+                  focus={focus}
+                  accentInk={accent.ink}
+                  accentHex={accent.hex}
+                  onFocusCell={(field) => focusCell(s.localId, field)}
+                  onCheck={() => commitRow(s.localId)}
+                />
+              ))}
+              <button onClick={addSet} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", height: 44, marginTop: 4, background: "transparent", border: "none", color: TOK.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                <I.Plus size={14} color={TOK.muted} w={2} /> Satz hinzufügen
+              </button>
+            </div>
 
-        {/* Override / set logger sheet */}
-        <SetLoggerSheet
-          open={!!override && !platesOpen}
-          draft={override}
-          accentHex={accent.hex}
-          accentInk={accent.ink}
-          onClose={() => setOverride(null)}
-          onChange={setOverride}
-          onPlates={() => setPlatesOpen(true)}
-          onLog={() => {
-            if (!override) return;
-            commit(override.exKey, override.setId, { weight: override.weight, reps: override.reps, rir: override.rir, partials: override.partials, setType: override.setType });
-            setOverride(null);
-          }}
-        />
-        <PlatesSheet open={platesOpen} onClose={() => setPlatesOpen(false)} weight={override?.weight ?? 100} barWeight={barWeight} accentHex={accent.hex} />
+            {/* Rest timer (floats above the keypad / action bar) */}
+            {restTimer && (
+              <RestTimerBar timer={restTimer} accentHex={accent.hex} accentInk={accent.ink} onAdjust={adjustRest} onSkip={() => setRestTimer(null)} />
+            )}
 
-        <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} label="Übung hinzufügen" title="">
-          <ExercisePicker exercises={exercises} accent={accent} onPick={addExercise} recentIds={recentIds} />
+            {/* Bottom: keypad when editing, else the advance/finish action */}
+            {focus ? (
+              <Keypad
+                field={focus.field}
+                rir={current.sets.find((s) => s.localId === focus.setId)?.rir ?? null}
+                accentHex={accent.hex}
+                accentInk={accent.ink}
+                onDigit={typeDigit}
+                onBackspace={backspace}
+                onRir={(v) => setRir(focus.setId, v)}
+                onRirMode={() => setFocus({ ...focus, field: "rir" })}
+                onFailure={() => { patchSet(focus.setId, { setType: "failure", rir: 0 }); }}
+                onPartial={() => { patchSet(focus.setId, { setType: "partial" }); }}
+                onCollapse={() => setFocus(null)}
+                onConfirm={() => commitRow(focus.setId)}
+              />
+            ) : (
+              <div style={{ padding: "8px 12px 22px", flexShrink: 0, background: TOK.bg, borderTop: `1px solid ${TOK.border}` }}>
+                <button
+                  onClick={isLast ? finish : nextExercise}
+                  disabled={finishing}
+                  style={{ width: "100%", height: 54, background: accent.hex, color: accent.ink, border: "none", borderRadius: 16, fontFamily: "inherit", fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: finishing ? 0.5 : 1 }}
+                >
+                  {isLast ? "Workout beenden" : "Nächste Übung"} <I.ArrowR size={16} color={accent.ink} />
+                </button>
+              </div>
+            )}
+          </>
+        ) : null}
+
+        {/* Plate calculator */}
+        <PlatesSheet open={platesOpen} onClose={() => setPlatesOpen(false)} weight={current?.sets.find((s) => s.status !== "done")?.weight ?? current?.suggestion.weight ?? 100} barWeight={barWeight} accentHex={accent.hex} />
+
+        {/* Exercise picker (add / swap) */}
+        <Sheet open={pickerMode !== null} onClose={() => setPickerMode(null)} label={pickerMode === "swap" ? "Übung tauschen" : "Übung hinzufügen"} title="">
+          <ExercisePicker exercises={exercises} accent={accent} onPick={onPick} recentIds={recentIds} />
         </Sheet>
 
+        {/* Exit prompt */}
         <Sheet open={exitPrompt} onClose={() => setExitPrompt(false)} label="Workout beenden" title="">
           <div style={{ padding: "0 20px 16px" }}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em" }}>Workout beenden?</div>
-            <div style={{ fontSize: 13, color: TOK.muted, marginTop: 6, lineHeight: 1.5 }}>
-              In deinem Verlauf speichern – oder ganz verwerfen.
-            </div>
-            <button
-              onClick={() => { setExitPrompt(false); exitSave(); }}
-              style={{ width: "100%", height: 56, marginTop: 20, background: accent.hex, color: accent.ink, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer" }}
-            >
-              Speichern
-            </button>
-            <button
-              onClick={() => { setExitPrompt(false); exitDiscard(); }}
-              style={{ width: "100%", height: 52, marginTop: 10, background: "transparent", color: TOK.fail, border: `1px solid ${TOK.border}`, borderRadius: 24, fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer" }}
-            >
-              Verwerfen
-            </button>
-            <button
-              onClick={() => setExitPrompt(false)}
-              style={{ width: "100%", height: 48, marginTop: 6, background: "transparent", color: TOK.muted, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
-            >
-              Abbrechen
-            </button>
+            <div style={{ fontSize: 17, fontWeight: 700, color: TOK.text, letterSpacing: "-0.01em" }}>Workout beenden?</div>
+            <div style={{ fontSize: 13, color: TOK.muted, marginTop: 6, lineHeight: 1.5 }}>In deinem Verlauf speichern – oder ganz verwerfen.</div>
+            <button onClick={() => { setExitPrompt(false); exitSave(); }} style={{ width: "100%", height: 54, marginTop: 20, background: accent.hex, color: accent.ink, border: "none", borderRadius: 16, fontFamily: "inherit", fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", cursor: "pointer" }}>Speichern</button>
+            <button onClick={() => { setExitPrompt(false); exitDiscard(); }} style={{ width: "100%", height: 50, marginTop: 10, background: "transparent", color: TOK.fail, border: `1px solid ${TOK.border}`, borderRadius: 16, fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Verwerfen</button>
+            <button onClick={() => setExitPrompt(false)} style={{ width: "100%", height: 46, marginTop: 6, background: "transparent", color: TOK.muted, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Abbrechen</button>
           </div>
         </Sheet>
 
-        {celebration && (
-          <PRCelebration prs={celebration.prs} accentHex={accent.hex} accentInk={accent.ink} onClose={() => goto("history")} />
-        )}
+        {celebration && <PRCelebration prs={celebration.prs} accentHex={accent.hex} accentInk={accent.ink} onClose={() => goto("history")} />}
       </div>
       <div className="home-indicator" />
     </>
+  );
+
+  function toggleWarmup() {
+    if (!current) return;
+    const target = current.sets.find((s) => s.status !== "done") ?? current.sets[0];
+    if (!target) return;
+    patchSet(target.localId, { setType: target.setType === "warmup" ? "normal" : "warmup", warmup: target.setType !== "warmup" });
+  }
+}
+
+function warmActive(ex: WEx) {
+  const t = ex.sets.find((s) => s.status !== "done") ?? ex.sets[0];
+  return t?.setType === "warmup";
+}
+
+// ── Exercise thumbnail ──────────────────────────────────────────
+function Thumb({ image, name, size, dim, done }: { image: string | null; name: string; size: number; dim?: boolean; done?: boolean }) {
+  const [ok, setOk] = React.useState(true);
+  return (
+    <div style={{ position: "relative", width: size, height: size, borderRadius: 13, background: "#ffffff", border: `1px solid ${TOK.border}`, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", opacity: dim ? 0.55 : 1 }}>
+      {image && ok ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={image} alt="" onError={() => setOk(false)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      ) : (
+        <span style={{ fontSize: size * 0.36, fontWeight: 800, color: TOK.dim }}>{(name?.[0] ?? "?").toUpperCase()}</span>
+      )}
+      {done && (
+        <span style={{ position: "absolute", right: 3, bottom: 3, width: 16, height: 16, borderRadius: 999, background: "var(--c-pr)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <I.Check size={10} color="#fff" />
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ActionChip({ icon, label, active, onTap }: { icon: React.ReactNode; label: string; active?: boolean; onTap?: () => void }) {
+  return (
+    <button onClick={onTap} style={{
+      flexShrink: 0, display: "flex", alignItems: "center", gap: 6, height: 34, padding: "0 13px", borderRadius: 999,
+      background: active ? TOK.text : "transparent", color: active ? "var(--c-bg)" : TOK.text,
+      border: active ? "none" : `1px solid ${TOK.border}`, fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+    }}>
+      {icon}<span>{label}</span>
+    </button>
+  );
+}
+
+// ── Set table row ───────────────────────────────────────────────
+const TABLE_GRID = "30px 1fr 62px 54px 34px";
+const colHead: React.CSSProperties = { fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: TOK.dim };
+
+function SetTableRow({ no, set, target, focus, accentInk, accentHex, onFocusCell, onCheck }: {
+  no: number; set: WSet; target: string; focus: Focus; accentInk: string; accentHex: string;
+  onFocusCell: (f: "weight" | "reps" | "rir") => void; onCheck: () => void;
+}) {
+  const done = set.status === "done";
+  const isW = focus?.setId === set.localId && focus.field === "weight";
+  const isR = focus?.setId === set.localId && focus.field === "reps";
+  const numCircle = set.setType === "warmup" ? "W" : set.setType === "failure" ? "F" : set.setType === "partial" ? "P" : String(no);
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: TABLE_GRID, alignItems: "center", gap: 8, height: 50, padding: "0 8px" }}>
+      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 999, background: TOK.surface2, fontSize: 12, fontWeight: 700, color: set.setType !== "normal" ? accentHex : TOK.muted }}>
+        <span className="tnum">{numCircle}</span>
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <Tnum style={{ fontSize: 12.5, color: TOK.dim, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{target}</Tnum>
+        {set.rir != null && <span className="tnum" style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 999, background: rirColor(set.rir), color: "#fff", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{set.rir}</span>}
+      </span>
+      <Cell value={set.weight} focused={isW} done={done} onTap={() => onFocusCell("weight")} />
+      <Cell value={set.reps} focused={isR} done={done} onTap={() => onFocusCell("reps")} />
+      <button onClick={onCheck} aria-label="Satz abhaken" style={{ justifySelf: "center", width: 26, height: 26, borderRadius: 8, background: done ? accentHex : "transparent", border: done ? "none" : `1.5px solid ${TOK.border}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", WebkitTapHighlightColor: "transparent" }}>
+        {done && <I.Check size={15} color={accentInk} />}
+      </button>
+    </div>
+  );
+}
+
+function Cell({ value, focused, done, onTap }: { value: number | null; focused: boolean; done: boolean; onTap: () => void }) {
+  return (
+    <button onClick={onTap} style={{
+      height: 36, borderRadius: 9, background: TOK.surface2,
+      border: focused ? `2px solid ${TOK.text}` : `1px solid ${TOK.border}`,
+      color: done ? TOK.text : TOK.muted, fontFamily: "inherit", cursor: "pointer", WebkitTapHighlightColor: "transparent",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <span className="tnum" style={{ fontSize: 15, fontWeight: 600 }}>{value != null ? fmtW(value) : "—"}</span>
+      {focused && <span style={{ width: 1.5, height: 16, background: TOK.text, marginLeft: 1, animation: "gymFade 600ms steps(1) infinite alternate" }} />}
+    </button>
+  );
+}
+
+// ── Custom numeric keypad ───────────────────────────────────────
+const RIR_DOTS = [0, 1, 2, 3, 4, 5, 6];
+function Keypad({ field, rir, accentHex, accentInk, onDigit, onBackspace, onRir, onRirMode, onFailure, onPartial, onCollapse, onConfirm }: {
+  field: "weight" | "reps" | "rir"; rir: number | null; accentHex: string; accentInk: string;
+  onDigit: (d: string) => void; onBackspace: () => void; onRir: (v: number) => void; onRirMode: () => void;
+  onFailure: () => void; onPartial: () => void; onCollapse: () => void; onConfirm: () => void;
+}) {
+  const key: React.CSSProperties = { height: 52, borderRadius: 12, background: TOK.surface, border: `1px solid ${TOK.border}`, color: TOK.text, fontFamily: "inherit", fontSize: 22, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", WebkitTapHighlightColor: "transparent" };
+  const sideKey: React.CSSProperties = { ...key, fontSize: 14, fontWeight: 700, background: TOK.surface2 };
+  return (
+    <div style={{ flexShrink: 0, background: TOK.bg, borderTop: `1px solid ${TOK.border}`, padding: "10px 10px 18px" }}>
+      {/* RIR dot scale */}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 4, padding: "0 2px 10px" }}>
+        {RIR_DOTS.map((v) => {
+          const sel = rir === v;
+          return (
+            <button key={v} onClick={() => onRir(v)} style={{ width: 34, height: 34, borderRadius: 999, background: rirColor(v), color: "#fff", border: sel ? `2.5px solid ${TOK.text}` : "2.5px solid transparent", fontFamily: "inherit", fontSize: 13, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", WebkitTapHighlightColor: "transparent" }}>
+              {v}{v === 6 ? "+" : ""}
+            </button>
+          );
+        })}
+        <button onClick={onRirMode} style={{ width: 34, height: 34, borderRadius: 999, background: TOK.surface2, color: field === "rir" ? accentHex : TOK.dim, border: field === "rir" ? `2.5px solid ${accentHex}` : `2.5px solid transparent`, fontFamily: "inherit", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>?</button>
+      </div>
+
+      {/* Keys: 3 number columns + 1 side column */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 7 }}>
+        <button style={key} onClick={() => onDigit("1")}>1</button>
+        <button style={key} onClick={() => onDigit("2")}>2</button>
+        <button style={key} onClick={() => onDigit("3")}>3</button>
+        <button style={sideKey} onClick={onCollapse} aria-label="Tastatur schließen"><I.ChevD size={20} color={TOK.muted} /></button>
+
+        <button style={key} onClick={() => onDigit("4")}>4</button>
+        <button style={key} onClick={() => onDigit("5")}>5</button>
+        <button style={key} onClick={() => onDigit("6")}>6</button>
+        <button style={sideKey} onClick={onRirMode}>RIR</button>
+
+        <button style={key} onClick={() => onDigit("7")}>7</button>
+        <button style={key} onClick={() => onDigit("8")}>8</button>
+        <button style={key} onClick={() => onDigit("9")}>9</button>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+          <button style={{ ...sideKey, background: TOK.text, color: "var(--c-bg)" }} onClick={onFailure}>F</button>
+          <button style={sideKey} onClick={onPartial}>P</button>
+        </div>
+
+        <button style={key} onClick={() => onDigit(".")}>.</button>
+        <button style={key} onClick={() => onDigit("0")}>0</button>
+        <button style={sideKey} onClick={onBackspace} aria-label="Löschen"><I.X size={18} color={TOK.text} /></button>
+        <button style={{ ...key, background: accentHex, border: "none" }} onClick={onConfirm} aria-label="Satz bestätigen"><I.Check size={22} color={accentInk} /></button>
+      </div>
+    </div>
   );
 }
 
 function PRCelebration({ prs, accentHex, accentInk, onClose }: { prs: { name: string; weight: number }[]; accentHex: string; accentInk: string; onClose: () => void }) {
   const confetti = React.useMemo(
     () => Array.from({ length: 26 }, (_, i) => ({
-      left: Math.random() * 100,
-      delay: Math.random() * 0.5,
-      dur: 1.6 + Math.random() * 1.2,
-      color: [accentHex, "#22c55e", "#fb923c", "#fafafa"][i % 4],
-      size: 6 + Math.random() * 6,
+      left: (i * 37) % 100,
+      delay: (i % 5) * 0.12,
+      dur: 1.6 + (i % 4) * 0.3,
+      color: [accentHex, "#22c55e", "#f5a623", "#3b82f6"][i % 4],
+      size: 6 + (i % 4) * 2,
     })),
     [accentHex]
   );
   return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.82)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, overflow: "hidden" }}>
+    <div style={{ position: "absolute", inset: 0, zIndex: 100, background: "rgba(10,10,12,0.86)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, overflow: "hidden" }}>
       {confetti.map((c, i) => (
         <span key={i} style={{ position: "absolute", top: -20, left: `${c.left}%`, width: c.size, height: c.size, borderRadius: 2, background: c.color, animation: `gymConfetti ${c.dur}s ${c.delay}s ease-in forwards` }} />
       ))}
       <div className="gym-pop" style={{ fontSize: 56, marginBottom: 8 }}>🏆</div>
-      <div style={{ fontSize: 26, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>Neuer Rekord{prs.length > 1 ? "e" : ""}!</div>
-      <div style={{ fontSize: 13, color: TOK.muted, marginTop: 4, marginBottom: 20 }}>Du hast deinen Bestwert geknackt</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em" }}>Neuer Rekord{prs.length > 1 ? "e" : ""}!</div>
+      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 4, marginBottom: 20 }}>Du hast deinen Bestwert geknackt</div>
       <div style={{ width: "100%", maxWidth: 300, display: "flex", flexDirection: "column", gap: 8 }}>
         {prs.slice(0, 4).map((p, i) => (
-          <div key={i} className="gym-fade" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: TOK.surface, borderRadius: 12, animationDelay: `${i * 90}ms` }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: TOK.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 10 }}>{p.name}</span>
-            <Tnum style={{ fontSize: 15, fontWeight: 700, color: accentHex, flexShrink: 0 }}>{fmtW(p.weight)} kg</Tnum>
+          <div key={i} className="gym-fade" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(255,255,255,0.08)", borderRadius: 12, animationDelay: `${i * 90}ms` }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 10 }}>{p.name}</span>
+            <Tnum style={{ fontSize: 15, fontWeight: 800, color: accentHex, flexShrink: 0 }}>{fmtW(p.weight)} kg</Tnum>
           </div>
         ))}
       </div>
-      <button onClick={onClose} style={{ marginTop: 24, width: "100%", maxWidth: 300, height: 52, background: accentHex, color: accentInk, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
-        Weiter
-      </button>
+      <button onClick={onClose} style={{ marginTop: 24, width: "100%", maxWidth: 300, height: 52, background: "#fff", color: "#0a0a0b", border: "none", borderRadius: 16, fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Weiter</button>
     </div>
-  );
-}
-
-const GRID = "24px 1fr 1fr 44px 30px";
-const colHead: React.CSSProperties = { fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: TOK.dim };
-
-function ExerciseCard({
-  ex,
-  isCurrent,
-  accentHex,
-  accentInk,
-  onLog,
-  onAdjust,
-  onAddSet,
-  onSelect,
-}: {
-  ex: WEx;
-  isCurrent: boolean;
-  accentHex: string;
-  accentInk: string;
-  onLog: (setId: string) => void;
-  onAdjust: (setId: string) => void;
-  onAddSet: () => void;
-  onSelect: () => void;
-}) {
-  const doneCount = ex.sets.filter((s) => s.status === "done" && !s.warmup).length;
-  const totalCount = ex.sets.filter((s) => !s.warmup).length;
-  const coachId = isCurrent ? ex.sets.find((s) => s.status !== "done")?.localId : undefined;
-
-  return (
-    <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 24, overflow: "hidden", marginBottom: 12, marginLeft: 12, marginRight: 12 }}>
-      <button
-        onClick={onSelect}
-        style={{ display: "flex", alignItems: "center", gap: 12, padding: "15px 16px 11px", width: "100%", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
-      >
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: TOK.surface2, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: TOK.muted, fontSize: 15, fontWeight: 600 }}>
-          {ex.name[0]}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em", lineHeight: 1.2 }}>{ex.name}</div>
-          <div style={{ fontSize: 12, color: TOK.dim, marginTop: 3 }}>Ziel {ex.targetReps} Wdh · {ex.suggestion.rir} RIR{ex.last ? <> · zuletzt <span className="tnum">{ex.last}</span></> : ""}</div>
-        </div>
-        <span className="tnum" style={{ fontSize: 13, color: isCurrent ? accentHex : TOK.dim, fontWeight: 600 }}>
-          {doneCount}/{totalCount}
-        </span>
-      </button>
-
-      <div style={{ display: "grid", gridTemplateColumns: GRID, gap: 12, padding: "2px 16px 6px", ...colHead }}>
-        <span>Satz</span>
-        <span>Gewicht</span>
-        <span>Wdh</span>
-        <span style={{ textAlign: "right" }}>RIR</span>
-        <span />
-      </div>
-
-      <div>
-        {ex.sets.map((s, i) => {
-          if (s.localId === coachId) {
-            return (
-              <CoachBox
-                key={s.localId}
-                idx={i + 1}
-                suggestion={ex.suggestion}
-                onLog={() => onLog(s.localId)}
-                onAdjust={() => onAdjust(s.localId)}
-              />
-            );
-          }
-          return <LocalSetRow key={s.localId} idx={i + 1} set={s} accentHex={accentHex} accentInk={accentInk} onTap={() => onAdjust(s.localId)} />;
-        })}
-      </div>
-
-      <button
-        onClick={onAddSet}
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", height: 46, background: "transparent", border: "none", color: TOK.muted, fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}
-      >
-        <I.Plus size={14} color={TOK.muted} w={2} /> Satz hinzufügen
-      </button>
-    </div>
-  );
-}
-
-function LocalSetRow({ idx, set, accentHex, accentInk, onTap }: { idx: number; set: WSet; accentHex: string; accentInk: string; onTap: () => void }) {
-  const done = set.status === "done";
-  const numColor = done ? TOK.text : TOK.dim;
-  const labelColor = done ? TOK.muted : TOK.dim;
-  const typed = set.setType !== "normal";
-  return (
-    <button onClick={done ? undefined : onTap} disabled={done} style={{ display: "grid", gridTemplateColumns: GRID, alignItems: "center", gap: 12, width: "100%", height: 56, padding: "0 16px", background: "transparent", border: "none", textAlign: "left", cursor: done ? "default" : "pointer", fontFamily: "inherit" }}>
-      <span className="tnum" style={{ color: typed ? setColor(set.setType) : done ? TOK.muted : TOK.dim, fontSize: 13, fontWeight: typed ? 700 : 500 }}>{setMark(set.setType, idx)}</span>
-      <span className="tnum" style={{ color: numColor, fontSize: 17, fontWeight: 500, letterSpacing: "-0.01em" }}>
-        {fmtW(set.weight)}
-        {set.weight != null && <span style={{ color: labelColor, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>kg</span>}
-      </span>
-      <span className="tnum" style={{ color: numColor, fontSize: 17, fontWeight: 500 }}>
-        {set.reps != null ? set.reps : "—"}
-        {set.partials ? <span style={{ color: setColor("partial"), fontSize: 12, marginLeft: 2, fontWeight: 600 }}>+{set.partials}</span> : null}
-        {set.reps != null && <span style={{ color: labelColor, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>Wdh</span>}
-      </span>
-      <span style={{ display: "flex", justifyContent: "flex-end" }}>
-        {set.rir != null ? (
-          <span className="tnum" style={{ minWidth: 22, height: 22, padding: "0 6px", borderRadius: 999, background: rirColor(set.rir), color: "#fff", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{set.rir}</span>
-        ) : null}
-      </span>
-      <span style={{ display: "flex", justifyContent: "flex-end" }}>
-        {done ? (
-          <span className="gym-pop" style={{ width: 24, height: 24, borderRadius: 999, background: accentHex, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <I.Check size={14} color={accentInk} />
-          </span>
-        ) : (
-          <span style={{ width: 22, height: 22, borderRadius: 999, border: `1.5px solid ${TOK.dim}` }} />
-        )}
-      </span>
-    </button>
-  );
-}
-
-function CoachBox({ idx, suggestion, onLog, onAdjust }: { idx: number; suggestion: Suggestion; onLog: () => void; onAdjust: () => void }) {
-  return (
-    <div style={{ border: `1px solid ${TOK.accent}`, background: TOK.accentSoft, borderRadius: 18, margin: "6px 12px 12px", overflow: "hidden" }}>
-      <button onClick={onAdjust} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", padding: "13px 16px 12px", fontFamily: "inherit" }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: TOK.accent }}>Coach-Vorschlag</div>
-        <div style={{ display: "grid", gridTemplateColumns: GRID, alignItems: "baseline", gap: 12, marginTop: 9 }}>
-          <span className="tnum" style={{ color: TOK.muted, fontSize: 13, fontWeight: 500 }}>{idx}</span>
-          <span className="tnum" style={{ color: TOK.text, fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>
-            {fmtW(suggestion.weight)}
-            <span style={{ color: TOK.muted, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>kg</span>
-          </span>
-          <span className="tnum" style={{ color: TOK.text, fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>
-            {suggestion.reps}
-            <span style={{ color: TOK.muted, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>Wdh</span>
-          </span>
-          <span className="tnum" style={{ color: TOK.muted, fontSize: 13, textAlign: "right" }}>{suggestion.rir} RIR</span>
-          <span />
-        </div>
-      </button>
-      <div style={{ padding: "0 12px 12px" }}>
-        <button onClick={onLog} style={{ width: "100%", height: 48, background: TOK.accent, color: TOK.accentInk, border: "none", borderRadius: 14, fontFamily: "inherit", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-          Satz loggen <I.ArrowR size={15} color={TOK.accentInk} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Set logger sheet ────────────────────────────────────────────
-const stepBtn: React.CSSProperties = { width: 64, background: TOK.surface, border: "none", borderRadius: 16, color: TOK.text, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" };
-function Stepper({ label, unit, value, step, onChange, onTapValue }: { label: string; unit?: string; value: number; step: number; onChange: (v: number) => void; onTapValue?: () => void }) {
-  const display = Number.isInteger(value) ? value : value.toFixed(1).replace(/\.0$/, "");
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ ...colHead, marginBottom: 8 }}>{label}</div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={() => onChange(Math.max(0, +(value - step).toFixed(2)))} style={stepBtn}>
-          <I.Minus size={20} color={TOK.text} />
-        </button>
-        <button onClick={onTapValue} disabled={!onTapValue} style={{ flex: 1, height: 76, background: TOK.surface, border: "none", borderRadius: 16, color: TOK.text, fontFamily: "inherit", cursor: onTapValue ? "pointer" : "default", display: "flex", alignItems: "baseline", justifyContent: "center", gap: 6 }}>
-          <span className="tnum" style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.03em" }}>{display}</span>
-          {unit && <span style={{ fontSize: 14, color: TOK.muted, fontWeight: 500 }}>{unit}</span>}
-        </button>
-        <button onClick={() => onChange(+(value + step).toFixed(2))} style={stepBtn}>
-          <I.Plus size={20} color={TOK.text} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SetLoggerSheet({
-  open,
-  draft,
-  accentHex,
-  accentInk,
-  onClose,
-  onChange,
-  onLog,
-  onPlates,
-}: {
-  open: boolean;
-  draft: { exKey: string; setId: string; weight: number; reps: number; rir: number; partials: number | null; setType: SetType } | null;
-  accentHex: string;
-  accentInk: string;
-  onClose: () => void;
-  onChange: (d: { exKey: string; setId: string; weight: number; reps: number; rir: number; partials: number | null; setType: SetType }) => void;
-  onLog: () => void;
-  onPlates: () => void;
-}) {
-  return (
-    <Sheet open={open} onClose={onClose}>
-      {draft && (
-        <div style={{ padding: "0 20px 16px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: TOK.text, letterSpacing: "-0.01em" }}>Satz loggen</div>
-            <button onClick={onClose} style={{ background: "transparent", border: "none", color: TOK.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: "4px 0" }}>Abbrechen</button>
-          </div>
-          {/* Set-type selector */}
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", margin: "14px -20px 0", padding: "0 20px 2px" }}>
-            {SET_TYPES.map((t) => {
-              const sel = draft.setType === t.id;
-              return (
-                <button key={t.id} onClick={() => onChange({ ...draft, setType: t.id })} style={{
-                  flexShrink: 0, height: 34, padding: "0 14px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit",
-                  fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", WebkitTapHighlightColor: "transparent",
-                  background: sel ? (t.id === "normal" ? TOK.text : t.color) : TOK.surface,
-                  border: sel ? "none" : `1px solid ${TOK.border}`,
-                  color: sel ? (t.id === "normal" ? "var(--c-primary-ink)" : "#fff") : TOK.muted,
-                }}>{t.label}</button>
-              );
-            })}
-          </div>
-          <Stepper label="Gewicht" unit="kg" value={draft.weight} step={2.5} onChange={(v) => onChange({ ...draft, weight: v })} onTapValue={onPlates} />
-          <Stepper label="Wiederholungen" value={draft.reps} step={1} onChange={(v) => onChange({ ...draft, reps: v })} />
-          {draft.setType === "partial" && (
-            <Stepper label="Partial-Wdh" value={draft.partials ?? 0} step={1} onChange={(v) => onChange({ ...draft, partials: Math.max(0, v) })} />
-          )}
-          <Stepper label="RIR · Wdh in Reserve" value={draft.rir} step={1} onChange={(v) => onChange({ ...draft, rir: Math.max(0, Math.min(10, v)) })} />
-          <button onClick={onLog} style={{ width: "100%", height: 56, marginTop: 22, background: accentHex, color: accentInk, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            Satz speichern <I.ArrowR size={16} color={accentInk} />
-          </button>
-        </div>
-      )}
-    </Sheet>
   );
 }
 
@@ -728,9 +696,9 @@ const PLATES = [
   { kg: 20, color: "#3b82f6" },
   { kg: 15, color: "#facc15" },
   { kg: 10, color: "#22c55e" },
-  { kg: 5, color: "#fafafa" },
-  { kg: 2.5, color: "#71717a" },
-  { kg: 1.25, color: "#52525b" },
+  { kg: 5, color: "#e5e5e5" },
+  { kg: 2.5, color: "#a1a1aa" },
+  { kg: 1.25, color: "#71717a" },
 ];
 function PlatesSheet({ open, onClose, weight, barWeight, accentHex }: { open: boolean; onClose: () => void; weight: number; barWeight: number; accentHex: string }) {
   const perSide = (weight - barWeight) / 2;
@@ -754,59 +722,57 @@ function PlatesSheet({ open, onClose, weight, barWeight, accentHex }: { open: bo
       <div style={{ padding: "0 20px 16px" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: TOK.muted }}>{fmtW(barWeight)} kg Stange · pro Seite</div>
-          <Tnum style={{ fontSize: 26, fontWeight: 600, color: accentHex }}>
+          <Tnum style={{ fontSize: 26, fontWeight: 800, color: accentHex }}>
             {fmtW(weight)}<span style={{ fontSize: 14, color: TOK.muted, marginLeft: 4, fontWeight: 400 }}>kg</span>
           </Tnum>
         </div>
-        <div style={{ background: TOK.bg, borderRadius: 12, padding: "24px 16px", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 150 }}>
+        <div style={{ background: TOK.surface2, borderRadius: 12, padding: "24px 16px", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 150 }}>
           {perSide <= 0 ? (
             <div style={{ color: TOK.dim, fontSize: 13 }}>Nur Stange</div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
               {plates.map((p, i) => (
-                <div key={i} className="tnum" style={{ width: Math.max(14, 10 + p.kg * 0.6), height: Math.max(60, 50 + p.kg * 2.5), borderRadius: 3, background: p.color, border: p.color === "#fafafa" ? "1px solid #d4d4d8" : "none", display: "flex", alignItems: "center", justifyContent: "center", color: p.color === "#facc15" || p.color === "#fafafa" ? "#0a0a0a" : "#fff", fontSize: 9, fontWeight: 700 }}>
+                <div key={i} className="tnum" style={{ width: Math.max(14, 10 + p.kg * 0.6), height: Math.max(60, 50 + p.kg * 2.5), borderRadius: 3, background: p.color, border: "1px solid rgba(0,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0a0a0a", fontSize: 9, fontWeight: 800 }}>
                   {p.kg}
                 </div>
               ))}
-              <div style={{ width: 56, height: 8, background: "#3f3f46", marginLeft: 4, borderRadius: 2 }} />
+              <div style={{ width: 56, height: 8, background: TOK.dim, marginLeft: 4, borderRadius: 2 }} />
             </div>
           )}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
           {[...counts.values()].map((p) => (
-            <div key={p.kg} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: TOK.surface, borderRadius: 8, fontSize: 12, color: TOK.text }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, background: p.color, border: p.color === "#fafafa" ? "1px solid #d4d4d8" : "none" }} />
+            <div key={p.kg} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: TOK.surface2, borderRadius: 8, fontSize: 12, color: TOK.text }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: p.color, border: "1px solid rgba(0,0,0,0.15)" }} />
               <Tnum>{p.count} × {p.kg}</Tnum>
             </div>
           ))}
-          {rem > 0.01 && <div style={{ padding: "6px 10px", background: "rgba(239,68,68,0.15)", color: TOK.fail, borderRadius: 8, fontSize: 12 }}>−{rem.toFixed(2)} kg zu wenig</div>}
+          {rem > 0.01 && <div style={{ padding: "6px 10px", background: "rgba(229,72,77,0.14)", color: TOK.fail, borderRadius: 8, fontSize: 12 }}>−{rem.toFixed(2)} kg zu wenig</div>}
         </div>
-        <button onClick={onClose} style={{ width: "100%", height: 52, marginTop: 18, background: TOK.surface, color: TOK.text, border: "none", borderRadius: 24, fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Fertig</button>
+        <button onClick={onClose} style={{ width: "100%", height: 50, marginTop: 18, background: TOK.surface2, color: TOK.text, border: `1px solid ${TOK.border}`, borderRadius: 16, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Fertig</button>
       </div>
     </Sheet>
   );
 }
 
 // ── Rest timer bar ──────────────────────────────────────────────
-const timerBtn: React.CSSProperties = { flex: 1, height: 38, borderRadius: 12, background: TOK.surface, color: TOK.text, border: "none", fontFamily: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer", WebkitTapHighlightColor: "transparent" };
+const timerBtn: React.CSSProperties = { flex: 1, height: 38, borderRadius: 12, background: TOK.surface2, color: TOK.text, border: `1px solid ${TOK.border}`, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", WebkitTapHighlightColor: "transparent" };
 function RestTimerBar({ timer, accentHex, accentInk, onAdjust, onSkip }: { timer: { total: number; remaining: number }; accentHex: string; accentInk: string; onAdjust: (d: number) => void; onSkip: () => void }) {
   const done = timer.remaining <= 0;
   const pct = timer.total > 0 ? Math.max(0, Math.min(1, timer.remaining / timer.total)) : 0;
   return (
-    <div style={{ position: "absolute", left: 12, right: 12, bottom: 96, zIndex: 35, background: TOK.surface, borderRadius: 18, padding: "12px 14px 14px", boxShadow: `0 16px 50px ${TOK.shadow}`, border: `1px solid ${done ? TOK.pr : TOK.border}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
+    <div style={{ flexShrink: 0, margin: "0 12px 8px", background: TOK.surface, borderRadius: 18, padding: "12px 14px 14px", boxShadow: `0 8px 24px ${TOK.shadow}`, border: `1px solid ${done ? "var(--c-pr)" : TOK.border}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: done ? TOK.pr : accentHex }}>
-          {done ? "Pause vorbei — nächster Satz" : "Pause"}
-        </span>
-        <Tnum style={{ fontSize: 24, fontWeight: 600, color: TOK.text, letterSpacing: "-0.02em" }}>{mmss(Math.max(0, timer.remaining))}</Tnum>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: done ? "var(--c-pr)" : accentHex }}>{done ? "Pause vorbei" : "Pause"}</span>
+        <Tnum style={{ fontSize: 24, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em" }}>{mmss(Math.max(0, timer.remaining))}</Tnum>
       </div>
-      <div style={{ height: 6, borderRadius: 999, background: TOK.bg, overflow: "hidden", marginBottom: 10 }}>
-        <div style={{ height: "100%", width: `${pct * 100}%`, background: done ? TOK.pr : accentHex, borderRadius: 999, transition: "width 1s linear" }} />
+      <div style={{ height: 6, borderRadius: 999, background: TOK.surface2, overflow: "hidden", marginBottom: 10 }}>
+        <div style={{ height: "100%", width: `${pct * 100}%`, background: done ? "var(--c-pr)" : accentHex, borderRadius: 999, transition: "width 1s linear" }} />
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={() => onAdjust(-15)} style={timerBtn}>−15s</button>
         <button onClick={() => onAdjust(15)} style={timerBtn}>+15s</button>
-        <button onClick={onSkip} style={{ ...timerBtn, background: accentHex, color: accentInk }}>{done ? "Schließen" : "Überspringen"}</button>
+        <button onClick={onSkip} style={{ ...timerBtn, background: accentHex, color: accentInk, border: "none" }}>{done ? "Schließen" : "Überspringen"}</button>
       </div>
     </div>
   );
@@ -837,6 +803,15 @@ function notifyRestDone() {
   } catch {
     /* audio blocked */
   }
+}
+
+const iconBtn: React.CSSProperties = { width: 36, height: 36, borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", WebkitTapHighlightColor: "transparent" };
+
+function hhmmss(secs: number) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function PhoneStatus() {

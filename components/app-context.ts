@@ -29,8 +29,8 @@ export type AppCtxValue = {
   exercises: Exercise[];
   exMap: Record<string, Exercise>;
   accent: Accent;
-  params: { sessionId?: string; exerciseId?: string; routineId?: string };
-  goto: (screen: ScreenId, param?: string) => void;
+  params: { sessionId?: string; exerciseId?: string; routineId?: string; programWorkoutId?: string };
+  goto: (screen: ScreenId, param?: string, kind?: "program" | "routine") => void;
   startWorkout: (cfg: WorkoutConfig) => void;
   workoutConfig: WorkoutConfig | null;
   reloadExercises: () => Promise<void>;

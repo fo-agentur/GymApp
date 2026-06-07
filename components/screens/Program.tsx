@@ -3,7 +3,7 @@ import React from "react";
 import { useApp } from "../app-context";
 import {
   fetchActiveWorkoutProgram, fetchWorkoutProgramFull,
-  type ActiveProgram, type ProgramFull, type ProgramWorkoutFull,
+  type ActiveProgram, type ProgramFull,
 } from "@/lib/data";
 import { TOK, TYPE, Tnum, I, ScreenHeader, SectionHeader, Card, Row, Divider, Btn, EmptyState } from "@/lib/design";
 import { IllPlanet } from "@/lib/illustrations";
@@ -11,7 +11,7 @@ import { IllPlanet } from "@/lib/illustrations";
 const DOW = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
 export default function Program() {
-  const { db, userId, exMap, goto, startWorkout, restartOnboarding } = useApp();
+  const { db, userId, exMap, goto, restartOnboarding } = useApp();
   const [active, setActive] = React.useState<ActiveProgram | null>(null);
   const [full, setFull] = React.useState<ProgramFull | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -27,9 +27,6 @@ export default function Program() {
       }
     })();
   }, [db, userId]);
-
-  const startDay = (w: ProgramWorkoutFull) =>
-    startWorkout({ routineId: null, name: w.name, programWorkoutId: w.id });
 
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 32 }}>
@@ -65,10 +62,10 @@ export default function Program() {
                 new Set(w.program_exercises.map((e) => exMap[e.exercise_id]?.primary_muscle).filter(Boolean) as string[]),
               ).slice(0, 4);
               return (
-                <div key={w.id} style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, padding: 16, marginBottom: 10 }}>
+                <button key={w.id} onClick={() => goto("workout-overview", w.id, "program")} style={{ display: "block", width: "100%", textAlign: "left", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, padding: 16, marginBottom: 10, cursor: "pointer", fontFamily: "inherit", WebkitTapHighlightColor: "transparent" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 40, height: 40, borderRadius: 10, background: TOK.surface2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: TOK.accent }}>{DOW[w.day_of_week] ?? "—"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: TOK.accent }}>{DOW[w.day_of_week] ?? "—"}</span>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ ...TYPE.cardTitle, color: TOK.text }}>{w.name}</div>
@@ -76,7 +73,7 @@ export default function Program() {
                         <Tnum>{w.program_exercises.length} Übungen</Tnum>
                       </div>
                     </div>
-                    <Btn size="sm" variant="primary" onClick={() => startDay(w)}>Start</Btn>
+                    <I.ChevR size={18} color={TOK.dim} />
                   </div>
                   {muscles.length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
@@ -85,7 +82,7 @@ export default function Program() {
                       ))}
                     </div>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>

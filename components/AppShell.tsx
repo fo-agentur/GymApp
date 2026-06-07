@@ -45,7 +45,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
   const router = useRouter();
   const db = React.useMemo(() => createClient(), []);
   const [active, setActive] = React.useState<ScreenId>("today");
-  const [params, setParams] = React.useState<{ sessionId?: string; exerciseId?: string; routineId?: string }>({});
+  const [params, setParams] = React.useState<{ sessionId?: string; exerciseId?: string; routineId?: string; programWorkoutId?: string }>({});
   const [workoutConfig, setWorkoutConfig] = React.useState<WorkoutConfig | null>(null);
   const [exercises, setExercises] = React.useState<Exercise[]>([]);
   const [quickAdd, setQuickAdd] = React.useState(false);
@@ -84,11 +84,15 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     return m;
   }, [exercises]);
 
-  const goto = React.useCallback((screen: ScreenId, param?: string) => {
+  const goto = React.useCallback((screen: ScreenId, param?: string, kind?: "program" | "routine") => {
     setParams((prev) => {
       if (screen === "session-detail") return { ...prev, sessionId: param };
       if (screen === "exercise-detail") return { ...prev, exerciseId: param };
-      if (screen === "routine-editor" || screen === "workout-overview") return { ...prev, routineId: param };
+      if (screen === "workout-overview")
+        return kind === "program"
+          ? { ...prev, programWorkoutId: param, routineId: undefined }
+          : { ...prev, routineId: param, programWorkoutId: undefined };
+      if (screen === "routine-editor") return { ...prev, routineId: param };
       return prev;
     });
     setActive(screen);
