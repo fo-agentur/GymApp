@@ -1,14 +1,14 @@
-# GymApp
+# MacroFactor Workouts
 
-**MacroFactor Nutrition + MacroFactor Workouts — in one app.**
+**Science-based training that adapts. Your coach in your pocket.**
 
-A private PWA for Florian + ~10 friends that fuses both MacroFactor apps into a single
-experience and matches them in design, feel, and functionality as closely as possible.
-Next.js 15 + Supabase. Multi-user with **username + password**; every user's data is
-isolated via Postgres Row Level Security. No paywall, no ads.
+A private PWA for Florian + ~10 friends — a faithful, training-first re-creation of the
+**MacroFactor Workouts** app: a structured program tracker & rule-based coach. Next.js 15 +
+Supabase. Multi-user with **username + password**; every user's data is isolated via Postgres
+Row Level Security. No paywall, no ads.
 
-> Functionality-equivalent re-creation inspired by MacroFactor's UX and its publicly
-> documented algorithms — not a pixel/IP copy.
+> Functionality-equivalent re-creation inspired by MacroFactor Workouts' UX and its publicly
+> documented training principles — **own assets** (logo, fonts, illustrations), not an IP copy.
 
 ## Run locally
 
@@ -25,38 +25,39 @@ Friends sign up with a **username + password** — no email needed. Each usernam
 synthetic `username@gymapp.local` address; a database trigger auto-confirms accounts, so
 login is instant.
 
-## Built today
+## What it is
 
-**Training**
-- Active workout — start from a routine or empty, coach set suggestions, log sets live,
-  rest timer, plate calculator, finish → totals + PR detection
-- 873-exercise library with how-to guides, images, anatomical muscle map
-- History + session detail, routines (create / edit / reorder / archive), progress charts
+A training-first coach that **programs, logs, progresses, and analyzes**:
 
-**Nutrition**
-- Food log — search (Open Food Facts), barcode scan, **AI photo → macros**, manual entry
-- Macro targets + day/meal logging
+- **Programming** — onboarding questionnaire → personalized rule-based program; custom
+  program builder + periodization; templates.
+- **Logging** — rest timers, **RIR**, drop sets, failure, partial reps, myoreps, unilateral
+  L/R, supersets, smart warm-ups, custom exercises, exercise notes, plate calculator.
+- **Smart auto-progression** — per-exercise e1RM trend + double progression; targets evolve
+  from your logged sets, "like a coach would manage a program."
+- **Analytics** — volume by muscle group, strength (e1RM) trends, PR tracker, anatomical
+  muscle heatmap, workout history, a customizable dashboard.
+- **Body & sync** — scale weight + smoothed **True-Weight** trend, body metrics, progress
+  photos — the shared bridge to the nutrition side.
 
-**Account** — profile, settings (units, bar weight, rest defaults)
+900+ exercise library with how-to guides and an anatomical muscle map. Privacy-first:
+data is yours, with export.
 
-## Building toward (MacroFactor parity)
+## Design
 
-Unified MacroFactor-style dashboard · weekly macro bar-grid · **adaptive nutrition coach**
-(True-Weight trend + dynamic expenditure/TDEE + weekly target adjustment; Coached /
-Collaborative / Manual) · weight + body-metrics tracking with trend charts · full
-micronutrients · habits · **workout auto-progression** + program builder with RIR / drop /
-failure / myorep sets · volume analytics · light + dark themes.
-
-See `AGENTS.md` for the full spec, architecture, and the two adaptive engines.
+A dark-first **"space" identity** inspired by MacroFactor's Pentagram new look — deep-space
+near-black, a periwinkle signature accent, **Space Grotesk** display headlines, training
+set-type colour semantics, and an original space-themed illustration kit (`lib/illustrations.tsx`).
+Light + dark via CSS custom properties (token swap, no component edits).
 
 ## Architecture in one line
 
 One client shell (`app/page.tsx` → `components/AppShell.tsx`) with a screen router; inline
 -style components from `lib/design.tsx`; all data via `lib/data.ts` → Supabase. No
-per-screen routes, no Tailwind.
+per-screen routes, no Tailwind. See `AGENTS.md` for the full spec and `WORKOUTS_PLAN.md` for
+the rebuild roadmap.
 
 ## Deploy
 
 Push to `main` → Vercel auto-deploys. Env vars in Vercel: `NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`. The AI photo feature additionally needs the Supabase Edge
-Function secret `OPENROUTER_API_KEY` (set in the Supabase Dashboard, never in code).
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`.

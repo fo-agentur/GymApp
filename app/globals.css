@@ -2,51 +2,72 @@
    Dark is the default (:root). Light overrides under [data-theme="light"].
    lib/design.tsx maps TOK.* / MACRO.* to these vars, so flipping the theme
    is a pure variable swap — no component changes. */
+/* MacroFactor Workouts — Pentagram-inspired "space" identity.
+   Dark-first: deep-space near-black with a periwinkle signature accent.
+   Neutral primary (white pills) is kept; --c-accent carries brand moments
+   (onboarding, coach hints, active set). --c-set-* are training set-type
+   semantics; --c-kcal/protein/fat/carbs stay for synced body/nutrition viz. */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --c-bg: #000000;
-  --c-surface: #121214;
-  --c-surface2: #1c1c20;
-  --c-surface3: #26262b;
-  --c-border: #242428;
-  --c-text: #fafafa;
-  --c-muted: #9a9aa5;
-  --c-dim: #5b5b66;
+  --c-bg: #08080f;
+  --c-surface: #131320;
+  --c-surface2: #1c1c2c;
+  --c-surface3: #26263a;
+  --c-border: #242438;
+  --c-text: #f5f5fb;
+  --c-muted: #9a9ab2;
+  --c-dim: #5c5c74;
   --c-primary: #ffffff;
-  --c-primary-ink: #0a0a0a;
+  --c-primary-ink: #0a0a12;
   --c-primary-soft: rgba(255, 255, 255, 0.10);
-  --c-fail: #ef4444;
+  --c-accent: #6c7cff;
+  --c-accent-ink: #0a0a12;
+  --c-accent-soft: rgba(108, 124, 255, 0.16);
+  --c-fail: #ff5c5c;
   --c-pr: #34d27e;
+  --c-set-warmup: #ffb020;
+  --c-set-drop: #b06cff;
+  --c-set-failure: #ff5c5c;
+  --c-set-myorep: #2ed3d3;
+  --c-set-partial: #54d18a;
   --c-kcal: #4d8dff;
   --c-protein: #ff7043;
   --c-fat: #ffc24b;
   --c-carbs: #3ddc84;
-  --c-shadow: rgba(0, 0, 0, 0.5);
-  --c-stage: radial-gradient(circle at 50% 0%, #0e0e10 0%, #000 60%);
+  --c-shadow: rgba(0, 0, 0, 0.55);
+  --c-stage: radial-gradient(circle at 50% -8%, #1a1a36 0%, #08080f 55%);
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --c-bg: #f4f4f6;
+  --c-bg: #f4f4fa;
   --c-surface: #ffffff;
-  --c-surface2: #eeeef1;
-  --c-surface3: #e3e3e8;
-  --c-border: #e7e7ec;
-  --c-text: #0c0c0e;
-  --c-muted: #5b5b66;
-  --c-dim: #9a9aa3;
-  --c-primary: #0c0c0e;
+  --c-surface2: #ededf4;
+  --c-surface3: #e2e2ec;
+  --c-border: #e6e6f0;
+  --c-text: #0c0c16;
+  --c-muted: #5b5b6e;
+  --c-dim: #9a9aac;
+  --c-primary: #0c0c16;
   --c-primary-ink: #ffffff;
-  --c-primary-soft: rgba(0, 0, 0, 0.06);
+  --c-primary-soft: rgba(12, 12, 22, 0.06);
+  --c-accent: #4d5cf0;
+  --c-accent-ink: #ffffff;
+  --c-accent-soft: rgba(77, 92, 240, 0.10);
   --c-fail: #e5484d;
   --c-pr: #1f9d63;
+  --c-set-warmup: #d98a17;
+  --c-set-drop: #8b3df0;
+  --c-set-failure: #e5484d;
+  --c-set-myorep: #1aa6a6;
+  --c-set-partial: #1faf63;
   --c-kcal: #2f6fe0;
   --c-protein: #e85d34;
   --c-fat: #d99a2b;
   --c-carbs: #1faf63;
-  --c-shadow: rgba(20, 20, 40, 0.12);
-  --c-stage: radial-gradient(circle at 50% 0%, #ffffff 0%, #e9e9ee 60%);
+  --c-shadow: rgba(20, 20, 50, 0.12);
+  --c-stage: radial-gradient(circle at 50% -8%, #eceeff 0%, #e7e7f1 60%);
 }
 
 html,

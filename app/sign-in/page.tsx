@@ -3,7 +3,8 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usernameToEmail, validateUsername, validatePassword } from "@/lib/username";
-import { TOK, TYPE, ACCENT, Btn } from "@/lib/design";
+import { TOK, TYPE, ACCENT, Btn, FONT_DISPLAY } from "@/lib/design";
+import { IllOrbit } from "@/lib/illustrations";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -85,12 +86,16 @@ export default function SignInPage() {
           }}
         >
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <div style={{ textAlign: "center", marginBottom: 48 }}>
-              <div style={{ fontSize: 44, fontWeight: 700, color: TOK.text, letterSpacing: "-0.04em", lineHeight: 1 }}>
-                GymApp
+            <div style={{ textAlign: "center", marginBottom: 44 }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+                <IllOrbit size={88} />
+              </div>
+              <div style={{ ...TYPE.eyebrow, color: TOK.accent, marginBottom: 8 }}>MACROFACTOR</div>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 40, fontWeight: 700, color: TOK.text, letterSpacing: "-0.03em", lineHeight: 1 }}>
+                Workouts
               </div>
               <div style={{ fontSize: 13, color: TOK.dim, marginTop: 14, letterSpacing: "-0.01em" }}>
-                The strength tracker that respects your data.
+                Science-based training that adapts.
               </div>
             </div>
 

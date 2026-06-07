@@ -20,16 +20,33 @@ export const TOK = {
   fail: "var(--c-fail)",
   pr: "var(--c-pr)",
   primarySoft: "var(--c-primary-soft)",
+  // Brand "space" accent — periwinkle. Carries brand moments (onboarding,
+  // coach hints, active set). The neutral primary still drives buttons.
+  accent: "var(--c-accent)",
+  accentInk: "var(--c-accent-ink)",
+  accentSoft: "var(--c-accent-soft)",
   shadow: "var(--c-shadow)",
 };
 
-// Macro colour semantics for all nutrition data viz (MacroFactor-style).
+// Macro colour semantics for synced body/nutrition data viz (MacroFactor-style).
 export const MACRO = {
   kcal: "var(--c-kcal)",
   protein: "var(--c-protein)",
   fat: "var(--c-fat)",
   carbs: "var(--c-carbs)",
 };
+
+// Training set-type colour semantics (logging + analytics).
+export const SET = {
+  warmup: "var(--c-set-warmup)",
+  drop: "var(--c-set-drop)",
+  failure: "var(--c-set-failure)",
+  myorep: "var(--c-set-myorep)",
+  partial: "var(--c-set-partial)",
+};
+
+// Display typeface (Space Grotesk) — the "Macro Sans" stand-in for headlines.
+export const FONT_DISPLAY = '"Space Grotesk", "Geist", -apple-system, system-ui, sans-serif';
 
 export type Accent = { hex: string; name: string; ink: string };
 // Neutral primary: white on dark, black on light. MacroFactor uses a neutral
@@ -39,8 +56,9 @@ export const ACCENT: Accent = { hex: "var(--c-primary)", name: "Primary", ink: "
 export const ACCENTS: Record<string, Accent> = { primary: ACCENT };
 
 export const TYPE: Record<string, React.CSSProperties> = {
-  h1: { fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 },
-  h2: { fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.15 },
+  display: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.05 },
+  h1: { fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 },
+  h2: { fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.15 },
   cardTitle: { fontSize: 17, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.2 },
   body: { fontSize: 14, fontWeight: 500, letterSpacing: "-0.005em", lineHeight: 1.4 },
   bodyEm: { fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.3 },
