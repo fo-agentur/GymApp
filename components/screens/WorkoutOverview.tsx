@@ -118,7 +118,7 @@ export default function WorkoutOverview() {
                         <div key={i} style={{ display: "grid", gridTemplateColumns: "20px 1fr 26px", alignItems: "center", gap: 10, height: 30 }}>
                           <Tnum style={{ fontSize: 12, color: TOK.dim, fontWeight: 600 }}>{i + 1}</Tnum>
                           <Tnum style={{ fontSize: 14, color: TOK.text, fontWeight: 500 }}>{repLabel(e)}</Tnum>
-                          <span style={{ justifySelf: "end", width: 24, height: 24, borderRadius: 999, background: rirColor(rir), color: "#0a0a0a", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }} title="RIR">{rir}</span>
+                          <span style={{ justifySelf: "end", width: 24, height: 24, borderRadius: 999, background: rirColor(rir), color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }} title="RIR">{rir}</span>
                         </div>
                       ))}
                     </div>

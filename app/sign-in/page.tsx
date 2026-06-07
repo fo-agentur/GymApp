@@ -60,7 +60,7 @@ export default function SignInPage() {
     height: 52,
     padding: "0 16px",
     background: TOK.surface,
-    border: "none",
+    border: `1px solid ${TOK.border}`,
     borderRadius: 12,
     color: TOK.text,
     fontFamily: "inherit",
@@ -90,8 +90,8 @@ export default function SignInPage() {
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
                 <IllOrbit size={88} />
               </div>
-              <div style={{ ...TYPE.eyebrow, color: TOK.accent, marginBottom: 8 }}>MACROFACTOR</div>
-              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 40, fontWeight: 700, color: TOK.text, letterSpacing: "-0.03em", lineHeight: 1 }}>
+              <div style={{ ...TYPE.eyebrow, color: TOK.accent, marginBottom: 8, letterSpacing: "0.14em" }}>MACROFACTOR</div>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 42, fontWeight: 800, color: TOK.text, letterSpacing: "-0.035em", lineHeight: 1 }}>
                 Workouts
               </div>
               <div style={{ fontSize: 13, color: TOK.dim, marginTop: 14, letterSpacing: "-0.01em" }}>

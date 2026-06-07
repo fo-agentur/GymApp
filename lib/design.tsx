@@ -20,11 +20,14 @@ export const TOK = {
   fail: "var(--c-fail)",
   pr: "var(--c-pr)",
   primarySoft: "var(--c-primary-soft)",
-  // Brand "space" accent — periwinkle. Carries brand moments (onboarding,
-  // coach hints, active set). The neutral primary still drives buttons.
+  // Coral-orange brand accent (MacroFactor). Carries highlights: charts, active
+  // states, links, RIR target badges. The neutral primary (black/white) drives
+  // solid buttons — the accent is never the button colour.
   accent: "var(--c-accent)",
   accentInk: "var(--c-accent-ink)",
   accentSoft: "var(--c-accent-soft)",
+  // Bright blue used for the worked-muscle anatomy diagrams.
+  muscle: "var(--c-muscle)",
   shadow: "var(--c-shadow)",
 };
 
@@ -45,8 +48,18 @@ export const SET = {
   partial: "var(--c-set-partial)",
 };
 
-// Display typeface (Space Grotesk) — the "Macro Sans" stand-in for headlines.
-export const FONT_DISPLAY = '"Space Grotesk", "Geist", -apple-system, system-ui, sans-serif';
+// Reps-in-Reserve colour scale (0 hard → 6+ easy), shown as a dot on every set.
+// Clamps to 0..6; non-numeric / null → the neutral "unknown" grey.
+export function rirColor(rir: number | null | undefined): string {
+  if (rir == null || Number.isNaN(rir)) return "var(--c-rir-x)";
+  const r = Math.max(0, Math.min(6, Math.round(rir)));
+  return `var(--c-rir-${r})`;
+}
+
+// Display typeface — Hanken Grotesk stands in for the proprietary "Macro Sans".
+// Body text uses the same family (set on <body>), so headlines differ only by
+// weight + tracking, matching MacroFactor's single-typeface system.
+export const FONT_DISPLAY = '"Hanken Grotesk", -apple-system, "Segoe UI", system-ui, sans-serif';
 
 export type Accent = { hex: string; name: string; ink: string };
 // Neutral primary: white on dark, black on light. MacroFactor uses a neutral
@@ -56,10 +69,10 @@ export const ACCENT: Accent = { hex: "var(--c-primary)", name: "Primary", ink: "
 export const ACCENTS: Record<string, Accent> = { primary: ACCENT };
 
 export const TYPE: Record<string, React.CSSProperties> = {
-  display: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.05 },
-  h1: { fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 },
-  h2: { fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.15 },
-  cardTitle: { fontSize: 17, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.2 },
+  display: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.04 },
+  h1: { fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.08 },
+  h2: { fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.15 },
+  cardTitle: { fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", lineHeight: 1.2 },
   body: { fontSize: 14, fontWeight: 500, letterSpacing: "-0.005em", lineHeight: 1.4 },
   bodyEm: { fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.3 },
   caption: { fontSize: 13, fontWeight: 500, lineHeight: 1.35 },
@@ -200,8 +213,8 @@ export function Chip({ children, selected, onClick, accent = ACCENT }: { childre
   return (
     <button type="button" onClick={onClick} style={{
       height: 32, padding: "0 14px", borderRadius: 999,
-      background: selected ? accent.hex : TOK.surface, color: selected ? accent.ink : TOK.muted,
-      border: "none", fontFamily: "inherit", fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
+      background: selected ? accent.hex : "transparent", color: selected ? accent.ink : TOK.muted,
+      border: selected ? "none" : `1px solid ${TOK.border}`, fontFamily: "inherit", fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
       cursor: "pointer", WebkitTapHighlightColor: "transparent", whiteSpace: "nowrap", flexShrink: 0,
     }}>{children}</button>
   );
@@ -421,7 +434,7 @@ export function Row({ label, sublabel, trailing, onTap, chevron, danger }: { lab
 }
 
 export function Card({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ background: TOK.surface, borderRadius: 18, overflow: "hidden", ...style }}>{children}</div>;
+  return <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 18, overflow: "hidden", ...style }}>{children}</div>;
 }
 export function Divider() {
   return <div style={{ height: 1, background: TOK.border, margin: "0 16px" }} />;
@@ -499,8 +512,8 @@ export function WeekStrip({ trained, accent = ACCENT }: { trained: Set<string>; 
 }
 
 // ── Phone chrome ────────────────────────────────────────────────
-function PhoneStatusBar({ light = true }: { light?: boolean }) {
-  const c = light ? "#fafafa" : "#0a0a0a";
+function PhoneStatusBar() {
+  const c = TOK.text;
   return (
     <div className="phone-status" style={{ color: c }}>
       <div className="time tnum">9:41</div>

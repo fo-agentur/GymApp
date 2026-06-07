@@ -139,7 +139,7 @@ export default function Today() {
             onEmpty={() => startWorkout({ routineId: null, name: "Quick Workout" })}
           />
         ) : (
-          <div style={{ background: TOK.surface, borderRadius: 20, padding: "22px 18px", textAlign: "center" }}>
+          <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "22px 18px", textAlign: "center" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
               <IllConstellation size={92} />
             </div>
@@ -159,7 +159,7 @@ export default function Today() {
       <SectionHeader title="Diese Woche" style={{ padding: "26px 2px 12px" }} action={
         <button onClick={() => goto("progress")} style={linkBtn}>Alle Stats<I.ChevR size={12} color={TOK.dim} /></button>
       } />
-      <div style={{ background: TOK.surface, borderRadius: 20, padding: 18 }}>
+      <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <ProgressRing value={weekSets} max={WEEKLY_SET_TARGET} size={92} stroke={9} color={TOK.accent}>
             <Tnum style={{ fontSize: 24, fontWeight: 700, color: TOK.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{weekSets}</Tnum>
@@ -179,7 +179,7 @@ export default function Today() {
 
       {/* ── Body sync insight ── */}
       <SectionHeader title="Körper" style={{ padding: "26px 2px 12px" }} />
-      <button onClick={() => goto("progress")} style={{ width: "100%", background: TOK.surface, borderRadius: 18, padding: "14px 16px", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 14, WebkitTapHighlightColor: "transparent" }}>
+      <button onClick={() => goto("progress")} style={{ width: "100%", background: TOK.surface, borderRadius: 18, padding: "14px 16px", border: `1px solid ${TOK.border}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 14, WebkitTapHighlightColor: "transparent" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ ...TYPE.col, color: TOK.dim }}>Gewichtstrend</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}>

@@ -65,7 +65,7 @@ export default function Program() {
                 new Set(w.program_exercises.map((e) => exMap[e.exercise_id]?.primary_muscle).filter(Boolean) as string[]),
               ).slice(0, 4);
               return (
-                <div key={w.id} style={{ background: TOK.surface, borderRadius: 16, padding: 16, marginBottom: 10 }}>
+                <div key={w.id} style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, padding: 16, marginBottom: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 40, height: 40, borderRadius: 10, background: TOK.surface2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: TOK.accent }}>{DOW[w.day_of_week] ?? "—"}</span>

@@ -13,7 +13,7 @@ import {
   fetchProfile,
 } from "@/lib/data";
 import type { WorkoutSession, Exercise } from "@/lib/supabase/types";
-import { TOK, MACRO, Tnum, I, Sheet, fmtW, mmss, epley1rm } from "@/lib/design";
+import { TOK, MACRO, Tnum, I, Sheet, fmtW, mmss, epley1rm, rirColor } from "@/lib/design";
 import ExercisePicker from "./ExercisePicker";
 
 export type SetType = "normal" | "warmup" | "drop" | "failure" | "myorep" | "partial";
@@ -399,7 +399,7 @@ export default function Workout() {
         )}
 
         {/* Pinned action */}
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 12px 26px", background: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000 45%)", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 12px 26px", background: "linear-gradient(to bottom, transparent 0%, var(--c-bg) 45%)", pointerEvents: "none" }}>
           <button
             onClick={isLast || exs.length === 0 ? finish : nextExercise}
             disabled={finishing}
@@ -527,7 +527,7 @@ function ExerciseCard({
   const coachId = isCurrent ? ex.sets.find((s) => s.status !== "done")?.localId : undefined;
 
   return (
-    <div style={{ background: TOK.surface, borderRadius: 24, overflow: "hidden", marginBottom: 12, marginLeft: 12, marginRight: 12 }}>
+    <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 24, overflow: "hidden", marginBottom: 12, marginLeft: 12, marginRight: 12 }}>
       <button
         onClick={onSelect}
         style={{ display: "flex", alignItems: "center", gap: 12, padding: "15px 16px 11px", width: "100%", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
@@ -596,7 +596,11 @@ function LocalSetRow({ idx, set, accentHex, accentInk, onTap }: { idx: number; s
         {set.partials ? <span style={{ color: setColor("partial"), fontSize: 12, marginLeft: 2, fontWeight: 600 }}>+{set.partials}</span> : null}
         {set.reps != null && <span style={{ color: labelColor, fontSize: 12, marginLeft: 4, fontWeight: 400 }}>Wdh</span>}
       </span>
-      <span className="tnum" style={{ color: done ? TOK.muted : TOK.dim, fontSize: 13, textAlign: "right" }}>{set.rir != null ? `${set.rir}` : ""}</span>
+      <span style={{ display: "flex", justifyContent: "flex-end" }}>
+        {set.rir != null ? (
+          <span className="tnum" style={{ minWidth: 22, height: 22, padding: "0 6px", borderRadius: 999, background: rirColor(set.rir), color: "#fff", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{set.rir}</span>
+        ) : null}
+      </span>
       <span style={{ display: "flex", justifyContent: "flex-end" }}>
         {done ? (
           <span className="gym-pop" style={{ width: 24, height: 24, borderRadius: 999, background: accentHex, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -694,10 +698,11 @@ function SetLoggerSheet({
               const sel = draft.setType === t.id;
               return (
                 <button key={t.id} onClick={() => onChange({ ...draft, setType: t.id })} style={{
-                  flexShrink: 0, height: 34, padding: "0 14px", borderRadius: 999, border: "none", cursor: "pointer", fontFamily: "inherit",
+                  flexShrink: 0, height: 34, padding: "0 14px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit",
                   fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", WebkitTapHighlightColor: "transparent",
                   background: sel ? (t.id === "normal" ? TOK.text : t.color) : TOK.surface,
-                  color: sel ? "#0a0a0a" : TOK.muted,
+                  border: sel ? "none" : `1px solid ${TOK.border}`,
+                  color: sel ? (t.id === "normal" ? "var(--c-primary-ink)" : "#fff") : TOK.muted,
                 }}>{t.label}</button>
               );
             })}
@@ -788,7 +793,7 @@ function RestTimerBar({ timer, accentHex, accentInk, onAdjust, onSkip }: { timer
   const done = timer.remaining <= 0;
   const pct = timer.total > 0 ? Math.max(0, Math.min(1, timer.remaining / timer.total)) : 0;
   return (
-    <div style={{ position: "absolute", left: 12, right: 12, bottom: 96, zIndex: 35, background: TOK.surface2, borderRadius: 18, padding: "12px 14px 14px", boxShadow: "0 16px 50px rgba(0,0,0,0.6)", border: `1px solid ${done ? TOK.pr : TOK.border}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
+    <div style={{ position: "absolute", left: 12, right: 12, bottom: 96, zIndex: 35, background: TOK.surface, borderRadius: 18, padding: "12px 14px 14px", boxShadow: `0 16px 50px ${TOK.shadow}`, border: `1px solid ${done ? TOK.pr : TOK.border}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: done ? TOK.pr : accentHex }}>
           {done ? "Pause vorbei — nächster Satz" : "Pause"}
@@ -835,12 +840,13 @@ function notifyRestDone() {
 }
 
 function PhoneStatus() {
+  const c = TOK.text;
   return (
-    <div className="phone-status">
+    <div className="phone-status" style={{ color: c }}>
       <div className="time tnum">9:41</div>
       <div className="icons">
-        <svg width="17" height="11" viewBox="0 0 17 11"><g fill="#fafafa"><rect x="0" y="7" width="3" height="4" rx="0.6" /><rect x="4.5" y="5" width="3" height="6" rx="0.6" /><rect x="9" y="2.5" width="3" height="8.5" rx="0.6" /><rect x="13.5" y="0" width="3" height="11" rx="0.6" /></g></svg>
-        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="22" height="11" rx="3" stroke="#fafafa" strokeOpacity="0.45" fill="none" /><rect x="2" y="2" width="19" height="8" rx="1.5" fill="#fafafa" /></svg>
+        <svg width="17" height="11" viewBox="0 0 17 11"><g fill={c}><rect x="0" y="7" width="3" height="4" rx="0.6" /><rect x="4.5" y="5" width="3" height="6" rx="0.6" /><rect x="9" y="2.5" width="3" height="8.5" rx="0.6" /><rect x="13.5" y="0" width="3" height="11" rx="0.6" /></g></svg>
+        <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="22" height="11" rx="3" stroke={c} strokeOpacity="0.45" fill="none" /><rect x="2" y="2" width="19" height="8" rx="1.5" fill={c} /></svg>
       </div>
     </div>
   );
