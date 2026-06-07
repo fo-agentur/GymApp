@@ -160,15 +160,31 @@ export async function deleteRoutine(db: DB, id: string) {
 export async function startSession(
   db: DB,
   userId: string,
-  opts: { routineId?: string | null; name?: string | null }
+  opts: { routineId?: string | null; name?: string | null; programWorkoutId?: string | null }
 ): Promise<WorkoutSession> {
   const { data, error } = await db
     .from("workout_sessions")
-    .insert({ user_id: userId, routine_id: opts.routineId ?? null, name: opts.name ?? null })
+    .insert({
+      user_id: userId,
+      routine_id: opts.routineId ?? null,
+      program_workout_id: opts.programWorkoutId ?? null,
+      name: opts.name ?? null,
+    })
     .select()
     .single();
   if (error) throw error;
   return data;
+}
+
+// Program-workout exercises (target prescription for an active workout).
+export async function fetchProgramWorkoutExercises(db: DB, programWorkoutId: string): Promise<ProgramExercise[]> {
+  const { data, error } = await db
+    .from("program_exercises")
+    .select("*")
+    .eq("program_workout_id", programWorkoutId)
+    .order("position", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function logSet(

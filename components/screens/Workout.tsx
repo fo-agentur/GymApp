@@ -7,6 +7,7 @@ import {
   finishSession,
   discardSession,
   fetchRoutine,
+  fetchProgramWorkoutExercises,
   fetchLastPerformance,
   fetchRecentExerciseIds,
   fetchProfile,
@@ -89,10 +90,22 @@ export default function Workout() {
     if (startedRef.current) return;
     startedRef.current = true;
     (async () => {
-      const s = await startSession(db, userId, { routineId: workoutConfig?.routineId ?? null, name: workoutConfig?.name ?? "Workout" });
+      const s = await startSession(db, userId, {
+        routineId: workoutConfig?.routineId ?? null,
+        programWorkoutId: workoutConfig?.programWorkoutId ?? null,
+        name: workoutConfig?.name ?? "Workout",
+      });
       setSession(s);
       const built: WEx[] = [];
-      if (workoutConfig?.routineId) {
+      if (workoutConfig?.programWorkoutId) {
+        // Program-driven: load the day's prescribed exercises + targets.
+        const pexs = await fetchProgramWorkoutExercises(db, workoutConfig.programWorkoutId);
+        for (const pe of pexs) {
+          const ex = exMap[pe.exercise_id];
+          if (!ex) continue;
+          built.push(await buildEx(ex, pe.target_sets, pe.target_reps_min, pe.target_reps_max, pe.target_rir, pe.rest_seconds ?? 120));
+        }
+      } else if (workoutConfig?.routineId) {
         const routine = await fetchRoutine(db, workoutConfig.routineId);
         if (routine) {
           for (const re of routine.routine_exercises) {
@@ -547,8 +560,6 @@ function ExerciseCard({
                 key={s.localId}
                 idx={i + 1}
                 suggestion={ex.suggestion}
-                accentHex={accentHex}
-                accentInk={accentInk}
                 onLog={() => onLog(s.localId)}
                 onAdjust={() => onAdjust(s.localId)}
               />
@@ -599,11 +610,11 @@ function LocalSetRow({ idx, set, accentHex, accentInk, onTap }: { idx: number; s
   );
 }
 
-function CoachBox({ idx, suggestion, accentHex, accentInk, onLog, onAdjust }: { idx: number; suggestion: Suggestion; accentHex: string; accentInk: string; onLog: () => void; onAdjust: () => void }) {
+function CoachBox({ idx, suggestion, onLog, onAdjust }: { idx: number; suggestion: Suggestion; onLog: () => void; onAdjust: () => void }) {
   return (
-    <div style={{ border: `1px solid ${accentHex}`, borderRadius: 18, margin: "6px 12px 12px", overflow: "hidden" }}>
+    <div style={{ border: `1px solid ${TOK.accent}`, background: TOK.accentSoft, borderRadius: 18, margin: "6px 12px 12px", overflow: "hidden" }}>
       <button onClick={onAdjust} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", padding: "13px 16px 12px", fontFamily: "inherit" }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: accentHex }}>Coach-Vorschlag</div>
+        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: TOK.accent }}>Coach-Vorschlag</div>
         <div style={{ display: "grid", gridTemplateColumns: GRID, alignItems: "baseline", gap: 12, marginTop: 9 }}>
           <span className="tnum" style={{ color: TOK.muted, fontSize: 13, fontWeight: 500 }}>{idx}</span>
           <span className="tnum" style={{ color: TOK.text, fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>
@@ -619,8 +630,8 @@ function CoachBox({ idx, suggestion, accentHex, accentInk, onLog, onAdjust }: { 
         </div>
       </button>
       <div style={{ padding: "0 12px 12px" }}>
-        <button onClick={onLog} style={{ width: "100%", height: 48, background: accentHex, color: accentInk, border: "none", borderRadius: 14, fontFamily: "inherit", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-          Satz loggen <I.ArrowR size={15} color={accentInk} />
+        <button onClick={onLog} style={{ width: "100%", height: 48, background: TOK.accent, color: TOK.accentInk, border: "none", borderRadius: 14, fontFamily: "inherit", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          Satz loggen <I.ArrowR size={15} color={TOK.accentInk} />
         </button>
       </div>
     </div>
