@@ -23,16 +23,18 @@ import Settings from "./screens/Settings";
 
 const TAB_TO_SCREEN: Record<TabId, ScreenId> = {
   home: "today",
-  food: "food",
   train: "routines",
+  stats: "progress",
   more: "profile",
 };
 const SCREEN_TO_TAB: Partial<Record<ScreenId, TabId>> = {
   today: "home",
-  food: "food",
   routines: "train",
-  progress: "more",
+  progress: "stats",
   profile: "more",
+  // Nutrition is demoted out of the primary nav but still reachable from the
+  // Profile hub; keep the tab bar visible (under "Profil") while it's open.
+  food: "more",
 };
 
 export default function AppShell({ userId, username }: { userId: string; username: string }) {
@@ -190,9 +192,9 @@ function QuickAddSheet({
     <Sheet open={open} onClose={onClose} label="Schnell hinzufügen" title={mode === "weight" ? "Gewicht eintragen" : "Was willst du loggen?"}>
       {mode === "menu" ? (
         <div style={{ padding: "4px 12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <QuickRow icon={<I.Food size={20} color={MACRO.carbs} />} title="Essen loggen" sub="Suche · Barcode · Foto · manuell" onTap={() => { onClose(); goto("food"); }} />
+          <QuickRow icon={<I.Dumbbell size={20} color={TOK.accent} />} title="Training starten" sub="Aus Programm oder leer" onTap={() => { onClose(); startWorkout({ routineId: null, name: "Quick Workout" }); }} />
           <QuickRow icon={<I.Scale size={20} color={MACRO.kcal} />} title="Gewicht eintragen" sub="Heutige Wiegung" onTap={() => setMode("weight")} />
-          <QuickRow icon={<I.Dumbbell size={20} color={MACRO.protein} />} title="Workout starten" sub="Leeres Training" onTap={() => { onClose(); startWorkout({ routineId: null, name: "Quick Workout" }); }} />
+          <QuickRow icon={<I.Food size={20} color={MACRO.carbs} />} title="Essen loggen" sub="Suche · Barcode · Foto · manuell" onTap={() => { onClose(); goto("food"); }} />
         </div>
       ) : (
         <div style={{ padding: "8px 16px 18px" }}>

@@ -533,13 +533,13 @@ export function Phone({ children, bg = TOK.bg, tabBar, hideStatusBar }: { childr
   );
 }
 
-export type TabId = "home" | "food" | "train" | "more";
+export type TabId = "home" | "train" | "stats" | "more";
 export function TabBar({ active, onChange, onAdd, accent = ACCENT }: { active: TabId | null; onChange?: (t: TabId) => void; onAdd?: () => void; accent?: Accent }) {
   const tabs: { id: TabId; label: string; icon: (p: IP) => React.ReactElement }[] = [
     { id: "home", label: "Home", icon: I.Grid },
-    { id: "food", label: "Essen", icon: I.Food },
     { id: "train", label: "Training", icon: I.Dumbbell },
-    { id: "more", label: "Mehr", icon: I.More },
+    { id: "stats", label: "Statistik", icon: I.Stats },
+    { id: "more", label: "Profil", icon: I.User },
   ];
   const tabBtn = (t: { id: TabId; label: string; icon: (p: IP) => React.ReactElement }) => {
     const sel = active === t.id;

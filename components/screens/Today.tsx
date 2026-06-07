@@ -2,67 +2,49 @@
 import React from "react";
 import { useApp } from "../app-context";
 import {
-  fetchRoutines, fetchSessions, weeklyMuscleSets, fetchProfile, fetchActiveProgram,
-  fetchWeekMacros, fetchWeightLogs, type RoutineFull, type DayMacros,
+  fetchRoutines, fetchSessions, weeklyMuscleSets, fetchWeightLogs,
+  type RoutineFull,
 } from "@/lib/data";
-import type { WorkoutSession, Profile, NutritionProgram, WeightLog } from "@/lib/supabase/types";
-import { TOK, TYPE, Tnum, I, MACRO, SectionHeader, SessionRow, EmptyState, ProgressRing, Segmented, fmtVol, hmm } from "@/lib/design";
-import { MacroBarGrid, MiniLine, TrendChart, type MacroDay } from "@/lib/charts";
-import { trueWeight, rawPoints, latestTrendWeight, weeklyTrendChange, mifflinTDEE } from "@/lib/coach";
+import type { WorkoutSession, WeightLog } from "@/lib/supabase/types";
+import {
+  TOK, TYPE, Tnum, I, SectionHeader, SessionRow, EmptyState, ProgressRing,
+  WeekStrip, Btn, fmtVol, hmm,
+} from "@/lib/design";
+import { TrendChart } from "@/lib/charts";
+import { trueWeight, rawPoints, latestTrendWeight, weeklyTrendChange } from "@/lib/coach";
 import { type MuscleGroup } from "@/lib/muscles";
+import { IllConstellation } from "@/lib/illustrations";
 
+// Weekly working-set target across all muscles (rough full-program landmark).
 const WEEKLY_SET_TARGET = 80;
 const DAY_MS = 24 * 3600 * 1000;
-const DEFAULT_TARGETS = { kcal: 2200, protein: 160, carbs: 220, fat: 70 };
 
-function localISO(d: Date) {
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-}
 function datePill(iso: string) {
   const d = new Date(iso);
   return { dow: d.toLocaleDateString("de-DE", { weekday: "short" }).toUpperCase(), day: d.getDate() };
 }
+function estMinutes(r: RoutineFull) {
+  const sets = r.routine_exercises.reduce((n, e) => n + (e.target_sets || 0), 0);
+  return Math.max(15, Math.round(sets * 3.5));
+}
 
 export default function Today() {
-  const { db, userId, exMap, goto, startWorkout } = useApp();
-  const [profile, setProfile] = React.useState<Profile | null>(null);
-  const [program, setProgram] = React.useState<NutritionProgram | null>(null);
-  const [weekMap, setWeekMap] = React.useState<Record<string, DayMacros>>({});
+  const { db, username, exMap, goto, startWorkout } = useApp();
   const [weights, setWeights] = React.useState<WeightLog[]>([]);
   const [routines, setRoutines] = React.useState<RoutineFull[]>([]);
   const [sessions, setSessions] = React.useState<WorkoutSession[]>([]);
   const [muscleSets, setMuscleSets] = React.useState<Partial<Record<MuscleGroup, number>>>({});
   const [loading, setLoading] = React.useState(true);
 
-  // ── current week (Mon–Sun) ──
-  const now = new Date();
-  const monday = new Date(now);
-  monday.setHours(0, 0, 0, 0);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const weekDates = React.useMemo(
-    () => Array.from({ length: 7 }, (_, i) => localISO(new Date(monday.getTime() + i * DAY_MS))),
-    [monday.getTime()],
-  );
-  const todayISO = localISO(now);
-  const todayIdx = Math.max(0, weekDates.indexOf(todayISO));
-  const [selected, setSelected] = React.useState(todayIdx);
-  const [mode, setMode] = React.useState<"consumed" | "remaining">("consumed");
-
   React.useEffect(() => {
     (async () => {
       try {
-        const [p, prog, wm, wl, r, s, m] = await Promise.all([
-          fetchProfile(db, userId),
-          fetchActiveProgram(db),
-          fetchWeekMacros(db, weekDates),
+        const [wl, r, s, m] = await Promise.all([
           fetchWeightLogs(db),
           fetchRoutines(db),
           fetchSessions(db),
           weeklyMuscleSets(db, exMap),
         ]);
-        setProfile(p);
-        setProgram(prog);
-        setWeekMap(wm);
         setWeights(wl);
         setRoutines(r);
         setSessions(s);
@@ -72,44 +54,44 @@ export default function Today() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, userId, exMap]);
+  }, [db, exMap]);
 
-  // ── targets (program → profile → default) ──
-  const targets = {
-    kcal: program?.kcal_target ?? profile?.target_kcal ?? DEFAULT_TARGETS.kcal,
-    protein: program?.protein_g ?? profile?.target_protein_g ?? DEFAULT_TARGETS.protein,
-    carbs: program?.carbs_g ?? profile?.target_carbs_g ?? DEFAULT_TARGETS.carbs,
-    fat: program?.fat_g ?? profile?.target_fat_g ?? DEFAULT_TARGETS.fat,
-  };
+  const now = new Date();
 
-  const week: MacroDay[] = weekDates.map((d) => {
-    const m = weekMap[d];
-    return {
-      kcal: m?.kcal ?? 0, protein: m?.protein ?? 0, carbs: m?.carbs ?? 0, fat: m?.fat ?? 0,
-      future: d > todayISO,
-    };
-  });
-
-  // ── weight trend ──
-  const rawW = rawPoints(weights);
-  const trendW = trueWeight(weights);
-  const latestW = latestTrendWeight(trendW);
-  const weeklyChange = weeklyTrendChange(trendW);
-  const latestScale = weights.length ? weights[weights.length - 1].weight_kg : null;
-  const expenditure = program?.expenditure_kcal ?? (latestScale ? mifflinTDEE(profile ?? {}, latestScale) : null);
-  const intakeSeries = week.filter((d) => !d.future).map((d) => d.kcal);
-
-  // ── training ──
+  // ── training week ──
   const nowMs = now.getTime();
   const thisWeek = sessions.filter((s) => nowMs - new Date(s.started_at).getTime() < 7 * DAY_MS);
   const weekVolume = thisWeek.reduce((n, s) => n + (s.total_volume_kg ?? 0), 0);
   const muscleSetTotal = Object.values(muscleSets).reduce((n, v) => n + (v ?? 0), 0);
   const weekSets = muscleSetTotal || thisWeek.reduce((n, s) => n + (s.total_sets ?? 0), 0);
-  const suggested = routines[0] ?? null;
+  const trainedDays = React.useMemo(
+    () => new Set(sessions.map((s) => new Date(s.started_at).toDateString())),
+    [sessions],
+  );
+
+  // Suggested next workout: the routine least-recently trained (else the first).
+  const suggested = React.useMemo(() => {
+    if (!routines.length) return null;
+    const lastByName: Record<string, number> = {};
+    for (const s of sessions) {
+      const key = s.name ?? "";
+      if (!(key in lastByName)) lastByName[key] = new Date(s.started_at).getTime();
+    }
+    return [...routines].sort(
+      (a, b) => (lastByName[a.name] ?? 0) - (lastByName[b.name] ?? 0),
+    )[0];
+  }, [routines, sessions]);
+
   const startSuggested = () =>
     suggested ? goto("workout-overview", suggested.id) : startWorkout({ routineId: null, name: "Quick Workout" });
 
-  const dayLabels = ["M", "D", "M", "D", "F", "S", "S"];
+  // ── body sync insight ──
+  const rawW = rawPoints(weights);
+  const trendW = trueWeight(weights);
+  const latestW = latestTrendWeight(trendW);
+  const weeklyChange = weeklyTrendChange(trendW);
+
+  const hello = username ? username.charAt(0).toUpperCase() + username.slice(1) : "";
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 28px" }}>
@@ -117,75 +99,85 @@ export default function Today() {
       <div style={{ ...TYPE.eyebrow, color: TOK.dim }}>
         {now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}
       </div>
-      <div style={{ ...TYPE.h1, color: TOK.text, marginTop: 6 }}>Dashboard</div>
+      <div style={{ ...TYPE.display, color: TOK.text, marginTop: 6 }}>
+        {hello ? `Hi, ${hello}` : "Heute"}
+      </div>
 
-      {/* Nutrition & Targets */}
-      <SectionHeader title="Ernährung & Ziele" style={{ padding: "22px 2px 12px" }} />
-      <div style={{ background: TOK.surface, borderRadius: 20, padding: "16px 16px 14px" }}>
-        <MacroBarGrid week={week} targets={targets} selected={selected} onSelect={setSelected} mode={mode} dayLabels={dayLabels} />
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-          <div style={{ width: 188 }}>
-            <Segmented
-              value={mode}
-              onChange={(v) => setMode(v as "consumed" | "remaining")}
-              options={[{ value: "consumed", label: "Gegessen" }, { value: "remaining", label: "Übrig" }]}
-            />
+      {/* ── Hero: today's training ── */}
+      <div style={{ marginTop: 18 }}>
+        {suggested ? (
+          <TrainingHero
+            routine={suggested}
+            exMap={exMap}
+            onStart={() => goto("workout-overview", suggested.id)}
+            onEmpty={() => startWorkout({ routineId: null, name: "Quick Workout" })}
+          />
+        ) : (
+          <div style={{ background: TOK.surface, borderRadius: 20, padding: "22px 18px", textAlign: "center" }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
+              <IllConstellation size={92} />
+            </div>
+            <div style={{ ...TYPE.cardTitle, color: TOK.text }}>Bereit für den Start?</div>
+            <div style={{ ...TYPE.caption, color: TOK.muted, marginTop: 4, marginBottom: 14, maxWidth: 260, marginInline: "auto" }}>
+              Erstelle dein erstes Programm — oder starte direkt ein leeres Training.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="secondary" full onClick={() => goto("routine-editor")}>Programm erstellen</Btn>
+              <Btn variant="primary" full onClick={() => startWorkout({ routineId: null, name: "Quick Workout" })}>Leeres Training</Btn>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Insights & Analytics */}
-      <SectionHeader title="Insights" style={{ padding: "24px 2px 12px" }} />
-      <div style={{ display: "flex", gap: 12 }}>
-        <InsightCard
-          label="Verbrauch"
-          onTap={() => goto("progress")}
-          value={expenditure != null ? String(Math.round(expenditure)) : "—"}
-          unit="kcal"
-          empty={expenditure == null ? "Profil ausfüllen für Schätzung" : undefined}
-          chart={intakeSeries.length > 1 ? <MiniLine data={intakeSeries} color={MACRO.kcal} height={42} /> : undefined}
-        />
-        <InsightCard
-          label="Gewichtstrend"
-          onTap={() => goto("progress")}
-          value={latestW != null ? latestW.toFixed(1) : "—"}
-          unit="kg"
-          delta={weeklyChange != null ? `${weeklyChange >= 0 ? "+" : ""}${weeklyChange.toFixed(2)}/Wo` : undefined}
-          deltaDown={weeklyChange != null ? weeklyChange < 0 : undefined}
-          empty={weights.length === 0 ? "Gewicht loggen über +" : undefined}
-          chart={trendW.length > 1 ? <TrendChart raw={rawW} trend={trendW} height={42} /> : undefined}
-        />
-      </div>
-
-      {/* Training */}
-      <SectionHeader title="Training" style={{ padding: "24px 2px 12px" }} />
-      <div style={{ background: TOK.surface, borderRadius: 20, padding: "18px 18px" }}>
+      {/* ── This week ── */}
+      <SectionHeader title="Diese Woche" style={{ padding: "26px 2px 12px" }} action={
+        <button onClick={() => goto("progress")} style={linkBtn}>Alle Stats<I.ChevR size={12} color={TOK.dim} /></button>
+      } />
+      <div style={{ background: TOK.surface, borderRadius: 20, padding: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <ProgressRing value={weekSets} max={WEEKLY_SET_TARGET} size={92} stroke={9} color={MACRO.protein}>
+          <ProgressRing value={weekSets} max={WEEKLY_SET_TARGET} size={92} stroke={9} color={TOK.accent}>
             <Tnum style={{ fontSize: 24, fontWeight: 700, color: TOK.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{weekSets}</Tnum>
             <Tnum style={{ fontSize: 10, color: TOK.dim, fontWeight: 600 }}>Sätze</Tnum>
           </ProgressRing>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ ...TYPE.col, color: TOK.dim }}>Diese Woche</span>
-            </div>
             <div style={{ display: "flex", gap: 16 }}>
               <Stat label="Volumen" value={`${fmtVol(weekVolume)} kg`} />
               <Stat label="Einheiten" value={String(thisWeek.length)} />
             </div>
-            <button
-              onClick={startSuggested}
-              style={{ marginTop: 14, width: "100%", height: 44, borderRadius: 12, background: TOK.primarySoft, color: TOK.text, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, WebkitTapHighlightColor: "transparent" }}
-            >
-              <I.Dumbbell size={16} color={TOK.text} w={2} />
-              {suggested ? suggested.name : "Workout starten"}
-            </button>
+            <div style={{ marginTop: 14 }}>
+              <WeekStrip trained={trainedDays} accent={{ hex: TOK.accent, name: "accent", ink: TOK.accentInk }} />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Recent */}
-      <SectionHeader title="Zuletzt" style={{ padding: "26px 2px 8px" }} />
+      {/* ── Body sync insight ── */}
+      <SectionHeader title="Körper" style={{ padding: "26px 2px 12px" }} />
+      <button onClick={() => goto("progress")} style={{ width: "100%", background: TOK.surface, borderRadius: 18, padding: "14px 16px", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 14, WebkitTapHighlightColor: "transparent" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ ...TYPE.col, color: TOK.dim }}>Gewichtstrend</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}>
+            <Tnum style={{ fontSize: 22, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>
+              {latestW != null ? latestW.toFixed(1) : "—"}
+            </Tnum>
+            <span style={{ fontSize: 11, color: TOK.muted }}>kg</span>
+            {weeklyChange != null && (
+              <Tnum style={{ fontSize: 11, fontWeight: 600, color: weeklyChange < 0 ? TOK.pr : TOK.muted, marginLeft: 4 }}>
+                {weeklyChange >= 0 ? "+" : ""}{weeklyChange.toFixed(2)}/Wo
+              </Tnum>
+            )}
+          </div>
+          {weights.length === 0 && <div style={{ fontSize: 11, color: TOK.dim, marginTop: 4 }}>Gewicht loggen über +</div>}
+        </div>
+        {trendW.length > 1 ? (
+          <div style={{ width: 120, height: 44 }}><TrendChart raw={rawW} trend={trendW} height={44} /></div>
+        ) : <I.ChevR size={16} color={TOK.dim} />}
+      </button>
+
+      {/* ── Recent ── */}
+      <SectionHeader title="Zuletzt" style={{ padding: "26px 2px 8px" }} action={
+        sessions.length > 0 ? <button onClick={() => goto("history")} style={linkBtn}>Historie<I.ChevR size={12} color={TOK.dim} /></button> : undefined
+      } />
       {loading ? (
         <div style={{ padding: "8px 4px", color: TOK.dim, fontSize: 13 }}>Lädt…</div>
       ) : sessions.length === 0 ? (
@@ -208,38 +200,52 @@ export default function Today() {
   );
 }
 
+const linkBtn: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 2, background: "transparent", border: "none",
+  cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, color: TOK.dim, padding: 0,
+};
+
+function TrainingHero({ routine, exMap, onStart, onEmpty }: {
+  routine: RoutineFull; exMap: Record<string, { primary_muscle?: string }>; onStart: () => void; onEmpty: () => void;
+}) {
+  const muscles = Array.from(
+    new Set(routine.routine_exercises.map((e) => exMap[e.exercise_id]?.primary_muscle).filter(Boolean) as string[]),
+  ).slice(0, 4);
+  return (
+    <div style={{
+      borderRadius: 20, padding: "18px 18px 16px",
+      background: `linear-gradient(150deg, ${TOK.accentSoft}, ${TOK.surface} 65%)`,
+      border: `1px solid ${TOK.border}`,
+    }}>
+      <div style={{ ...TYPE.eyebrow, color: TOK.accent }}>NÄCHSTES TRAINING</div>
+      <div style={{ ...TYPE.h2, color: TOK.text, marginTop: 8 }}>{routine.name}</div>
+      <div style={{ display: "flex", gap: 8, alignItems: "baseline", marginTop: 6, fontSize: 13, color: TOK.muted }}>
+        <Tnum>{routine.routine_exercises.length} Übungen</Tnum>
+        <span style={{ color: TOK.dim }}>·</span>
+        <Tnum>~{estMinutes(routine)} Min</Tnum>
+      </div>
+      {muscles.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+          {muscles.map((m) => (
+            <span key={m} style={{ fontSize: 11, color: TOK.muted, background: TOK.surface2, borderRadius: 6, padding: "3px 8px" }}>{m}</span>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+        <Btn variant="primary" full size="lg" onClick={onStart} leadIcon={<I.Dumbbell size={18} color="var(--c-primary-ink)" w={2} />}>
+          Training starten
+        </Btn>
+        <Btn variant="secondary" size="lg" onClick={onEmpty}><I.Plus size={18} color={TOK.text} w={2} /></Btn>
+      </div>
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <Tnum style={{ fontSize: 18, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>{value}</Tnum>
       <div style={{ ...TYPE.col, color: TOK.dim, marginTop: 2 }}>{label}</div>
     </div>
-  );
-}
-
-function InsightCard({
-  label, value, unit, delta, deltaDown, chart, empty, onTap,
-}: {
-  label: string; value: string; unit: string; delta?: string; deltaDown?: boolean;
-  chart?: React.ReactNode; empty?: string; onTap?: () => void;
-}) {
-  return (
-    <button
-      onClick={onTap}
-      style={{ flex: 1, minWidth: 0, background: TOK.surface, borderRadius: 18, padding: "14px 14px 12px", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", flexDirection: "column", gap: 8, WebkitTapHighlightColor: "transparent" }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ ...TYPE.col, color: TOK.dim }}>{label}</span>
-        <I.ChevR size={13} color={TOK.dim} />
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-        <Tnum style={{ fontSize: 22, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>{value}</Tnum>
-        <span style={{ fontSize: 11, color: TOK.muted }}>{unit}</span>
-        {delta && <Tnum style={{ fontSize: 11, fontWeight: 600, color: deltaDown ? TOK.pr : TOK.muted, marginLeft: "auto" }}>{delta}</Tnum>}
-      </div>
-      <div style={{ height: 42, display: "flex", alignItems: "center" }}>
-        {empty ? <span style={{ fontSize: 11, color: TOK.dim }}>{empty}</span> : chart}
-      </div>
-    </button>
   );
 }

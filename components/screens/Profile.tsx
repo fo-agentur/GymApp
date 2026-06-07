@@ -23,7 +23,7 @@ export default function Profile() {
 
   return (
     <div style={{ flex: 1, overflowY: "auto", paddingBottom: 32 }}>
-      <ScreenHeader large title="Mehr" />
+      <ScreenHeader large title="Profil" />
 
       <div style={{ padding: "0 16px 24px", display: "flex", alignItems: "center", gap: 16 }}>
         <div style={{ width: 64, height: 64, borderRadius: 999, background: TOK.surface, display: "flex", alignItems: "center", justifyContent: "center", color: TOK.text, fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em" }}>{initials}</div>
@@ -46,6 +46,13 @@ export default function Profile() {
         <Row label="Verlauf" sublabel="Alle Workouts" chevron onTap={() => goto("history")} />
         <Divider />
         <Row label="Übungs-Bibliothek" chevron onTap={() => goto("library")} />
+      </Card>
+
+      <SectionHeader title="Körper & Ernährung" />
+      <Card style={{ margin: "0 12px 20px" }}>
+        <Row label="Körper & Gewicht" sublabel="Trend, Maße, Fotos" chevron onTap={() => goto("progress")} />
+        <Divider />
+        <Row label="Ernährung" sublabel="Essen loggen (synchronisiert)" chevron onTap={() => goto("food")} />
       </Card>
 
       <SectionHeader title="Konto" />
