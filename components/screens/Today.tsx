@@ -3,7 +3,8 @@ import React from "react";
 import { useApp } from "../app-context";
 import {
   fetchRoutines, fetchSessions, weeklyMuscleSets, fetchWeightLogs,
-  type RoutineFull,
+  fetchActiveWorkoutProgram, fetchWorkoutProgramFull,
+  type RoutineFull, type ProgramFull, type ProgramWorkoutFull,
 } from "@/lib/data";
 import type { WorkoutSession, WeightLog } from "@/lib/supabase/types";
 import {
@@ -29,32 +30,35 @@ function estMinutes(r: RoutineFull) {
 }
 
 export default function Today() {
-  const { db, username, exMap, goto, startWorkout } = useApp();
+  const { db, userId, username, exMap, goto, startWorkout } = useApp();
   const [weights, setWeights] = React.useState<WeightLog[]>([]);
   const [routines, setRoutines] = React.useState<RoutineFull[]>([]);
   const [sessions, setSessions] = React.useState<WorkoutSession[]>([]);
   const [muscleSets, setMuscleSets] = React.useState<Partial<Record<MuscleGroup, number>>>({});
+  const [program, setProgram] = React.useState<ProgramFull | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     (async () => {
       try {
-        const [wl, r, s, m] = await Promise.all([
+        const [wl, r, s, m, ap] = await Promise.all([
           fetchWeightLogs(db),
           fetchRoutines(db),
           fetchSessions(db),
           weeklyMuscleSets(db, exMap),
+          fetchActiveWorkoutProgram(db, userId),
         ]);
         setWeights(wl);
         setRoutines(r);
         setSessions(s);
         setMuscleSets(m);
+        if (ap) setProgram(await fetchWorkoutProgramFull(db, ap.program.id));
       } finally {
         setLoading(false);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, exMap]);
+  }, [db, userId, exMap]);
 
   const now = new Date();
 
@@ -82,8 +86,17 @@ export default function Today() {
     )[0];
   }, [routines, sessions]);
 
-  const startSuggested = () =>
-    suggested ? goto("workout-overview", suggested.id) : startWorkout({ routineId: null, name: "Quick Workout" });
+  // Next program day: the upcoming weekday in the plan, else the first workout.
+  const nextWorkout = React.useMemo<ProgramWorkoutFull | null>(() => {
+    const days = program?.program_workouts ?? [];
+    if (!days.length) return null;
+    const dow = now.getDay();
+    return days.find((d) => d.day_of_week >= dow) ?? days[0];
+  }, [program, now]);
+
+  const muscleList = (ids: string[]) =>
+    Array.from(new Set(ids.map((id) => exMap[id]?.primary_muscle).filter(Boolean) as string[])).slice(0, 4);
+  const progSets = (w: ProgramWorkoutFull) => w.program_exercises.reduce((n, e) => n + (e.target_sets || 0), 0);
 
   // ── body sync insight ──
   const rawW = rawPoints(weights);
@@ -105,10 +118,23 @@ export default function Today() {
 
       {/* ── Hero: today's training ── */}
       <div style={{ marginTop: 18 }}>
-        {suggested ? (
+        {nextWorkout ? (
           <TrainingHero
-            routine={suggested}
-            exMap={exMap}
+            eyebrow="NÄCHSTES TRAINING"
+            name={nextWorkout.name}
+            exerciseCount={nextWorkout.program_exercises.length}
+            estMin={Math.max(15, Math.round(progSets(nextWorkout) * 3.5))}
+            muscles={muscleList(nextWorkout.program_exercises.map((e) => e.exercise_id))}
+            onStart={() => startWorkout({ routineId: null, name: nextWorkout.name, programWorkoutId: nextWorkout.id })}
+            onEmpty={() => startWorkout({ routineId: null, name: "Quick Workout" })}
+          />
+        ) : suggested ? (
+          <TrainingHero
+            eyebrow="NÄCHSTES TRAINING"
+            name={suggested.name}
+            exerciseCount={suggested.routine_exercises.length}
+            estMin={estMinutes(suggested)}
+            muscles={muscleList(suggested.routine_exercises.map((e) => e.exercise_id))}
             onStart={() => goto("workout-overview", suggested.id)}
             onEmpty={() => startWorkout({ routineId: null, name: "Quick Workout" })}
           />
@@ -205,24 +231,21 @@ const linkBtn: React.CSSProperties = {
   cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, color: TOK.dim, padding: 0,
 };
 
-function TrainingHero({ routine, exMap, onStart, onEmpty }: {
-  routine: RoutineFull; exMap: Record<string, { primary_muscle?: string }>; onStart: () => void; onEmpty: () => void;
+function TrainingHero({ eyebrow, name, exerciseCount, estMin, muscles, onStart, onEmpty }: {
+  eyebrow: string; name: string; exerciseCount: number; estMin: number; muscles: string[]; onStart: () => void; onEmpty: () => void;
 }) {
-  const muscles = Array.from(
-    new Set(routine.routine_exercises.map((e) => exMap[e.exercise_id]?.primary_muscle).filter(Boolean) as string[]),
-  ).slice(0, 4);
   return (
     <div style={{
       borderRadius: 20, padding: "18px 18px 16px",
       background: `linear-gradient(150deg, ${TOK.accentSoft}, ${TOK.surface} 65%)`,
       border: `1px solid ${TOK.border}`,
     }}>
-      <div style={{ ...TYPE.eyebrow, color: TOK.accent }}>NÄCHSTES TRAINING</div>
-      <div style={{ ...TYPE.h2, color: TOK.text, marginTop: 8 }}>{routine.name}</div>
+      <div style={{ ...TYPE.eyebrow, color: TOK.accent }}>{eyebrow}</div>
+      <div style={{ ...TYPE.h2, color: TOK.text, marginTop: 8 }}>{name}</div>
       <div style={{ display: "flex", gap: 8, alignItems: "baseline", marginTop: 6, fontSize: 13, color: TOK.muted }}>
-        <Tnum>{routine.routine_exercises.length} Übungen</Tnum>
+        <Tnum>{exerciseCount} Übungen</Tnum>
         <span style={{ color: TOK.dim }}>·</span>
-        <Tnum>~{estMinutes(routine)} Min</Tnum>
+        <Tnum>~{estMin} Min</Tnum>
       </div>
       {muscles.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
