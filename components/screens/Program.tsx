@@ -11,7 +11,7 @@ import { IllPlanet } from "@/lib/illustrations";
 const DOW = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
 export default function Program() {
-  const { db, userId, exMap, goto, startWorkout } = useApp();
+  const { db, userId, exMap, goto, startWorkout, restartOnboarding } = useApp();
   const [active, setActive] = React.useState<ActiveProgram | null>(null);
   const [full, setFull] = React.useState<ProgramFull | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -94,14 +94,16 @@ export default function Program() {
         <EmptyState
           icon={<IllPlanet size={72} />}
           title="Kein aktives Programm"
-          description="Erstelle ein eigenes Workout oder lass dir ein Programm generieren."
-          cta={<Btn variant="primary" onClick={() => goto("routine-editor")}>Workout erstellen</Btn>}
+          description="Lass dir ein wissenschaftlich fundiertes Programm generieren — oder erstelle ein eigenes Workout."
+          cta={<Btn variant="primary" onClick={restartOnboarding}>Programm generieren</Btn>}
         />
       )}
 
       {/* Secondary entry points */}
       <SectionHeader title="Mehr" style={{ padding: "20px 14px 8px" }} />
       <Card style={{ margin: "0 12px 20px" }}>
+        <Row label={active ? "Programm neu generieren" : "Programm generieren"} sublabel="Ziele & Equipment neu festlegen" chevron onTap={restartOnboarding} />
+        <Divider />
         <Row label="Eigene Workouts" sublabel="Manuelle Routinen" chevron onTap={() => goto("routines")} />
         <Divider />
         <Row label="Übungs-Bibliothek" sublabel="900+ Übungen & How-to" chevron onTap={() => goto("library")} />

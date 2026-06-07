@@ -51,6 +51,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
   const [quickAdd, setQuickAdd] = React.useState(false);
   const [profileLoaded, setProfileLoaded] = React.useState(false);
   const [onboardingNeeded, setOnboardingNeeded] = React.useState(false);
+  const [showOnboarding, setShowOnboarding] = React.useState(false);
 
   const reloadExercises = React.useCallback(async () => {
     try {
@@ -116,6 +117,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     startWorkout,
     workoutConfig,
     reloadExercises,
+    restartOnboarding: () => setShowOnboarding(true),
     signOut,
   };
 
@@ -133,12 +135,21 @@ export default function AppShell({ userId, username }: { userId: string; usernam
       </div>
     );
   }
-  if (onboardingNeeded) {
+  if (onboardingNeeded || showOnboarding) {
     return (
       <div className="stage">
         <div className="phone" style={{ background: TOK.bg }}>
           <div className="phone-dynamic-island" />
-          <Onboarding db={db} userId={userId} exercises={exercises} onComplete={() => setOnboardingNeeded(false)} />
+          <Onboarding
+            db={db}
+            userId={userId}
+            exercises={exercises}
+            onComplete={() => {
+              setOnboardingNeeded(false);
+              setShowOnboarding(false);
+              setActive("program"); // remount Program to show the fresh plan
+            }}
+          />
         </div>
       </div>
     );

@@ -34,6 +34,7 @@ export type AppCtxValue = {
   startWorkout: (cfg: WorkoutConfig) => void;
   workoutConfig: WorkoutConfig | null;
   reloadExercises: () => Promise<void>;
+  restartOnboarding: () => void;
   signOut: () => Promise<void>;
 };
 
