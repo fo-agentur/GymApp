@@ -1096,6 +1096,7 @@ export type Habit = Tables<"habits">
 export type HabitLog = Tables<"habit_logs">
 export type GymProfile = Tables<"gym_profiles">
 export type Program = Tables<"programs">
+export type ProgramWeek = Tables<"program_weeks">
 export type ProgramWorkout = Tables<"program_workouts">
 export type ProgramExercise = Tables<"program_exercises">
 export type UserProgram = Tables<"user_programs">

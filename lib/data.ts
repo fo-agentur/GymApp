@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Exercise, Food, FoodLog, NutritionProgram, Routine, WeightLog, WorkoutSession } from "./supabase/types";
+import type {
+  Database, Exercise, Food, FoodLog, NutritionProgram, Routine, WeightLog, WorkoutSession,
+  Program, ProgramWeek, ProgramWorkout, ProgramExercise, UserProgram,
+} from "./supabase/types";
 import type { MuscleGroup } from "./muscles";
+import type { ProgramSpec } from "./program-gen";
 
 // Browser/server clients from @supabase/ssr resolve their Schema generic
 // concretely; keep this alias permissive on that 3rd generic so both are assignable.
@@ -557,4 +561,119 @@ export async function saveProgram(
     .single();
   if (error) throw error;
   return data as NutritionProgram;
+}
+
+// ── Onboarding ──────────────────────────────────────────────────
+export async function completeOnboarding(
+  db: DB,
+  userId: string,
+  patch: Partial<Database["public"]["Tables"]["profiles"]["Update"]>,
+) {
+  const { error } = await db.from("profiles").update({ ...patch, onboarding_completed: true }).eq("id", userId);
+  if (error) throw error;
+}
+
+// ── Workout programs (generated or custom) ──────────────────────
+// Convention: the recurring microcycle lives as program_workouts with
+// week_number = 1; program_weeks describes each week's character (deload /
+// volume multiplier). user_programs.current_week tracks where the user is.
+export type ProgramWorkoutFull = ProgramWorkout & { program_exercises: ProgramExercise[] };
+export type ProgramFull = Program & { program_weeks: ProgramWeek[]; program_workouts: ProgramWorkoutFull[] };
+export type ActiveProgram = { userProgram: UserProgram; program: Program };
+
+export async function createWorkoutProgram(db: DB, userId: string, spec: ProgramSpec): Promise<string> {
+  const { data: prog, error } = await db
+    .from("programs")
+    .insert({
+      user_id: userId, name: spec.name, goal: spec.goal, difficulty: spec.difficulty,
+      days_per_week: spec.days_per_week, duration_weeks: spec.duration_weeks,
+      description: spec.description, is_template: false, archived: false,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  const programId = prog.id;
+
+  if (spec.weeks.length) {
+    const { error: we } = await db.from("program_weeks").insert(
+      spec.weeks.map((w) => ({ program_id: programId, week_number: w.week_number, is_deload: w.is_deload, volume_multiplier: w.volume_multiplier })),
+    );
+    if (we) throw we;
+  }
+
+  const { data: wos, error: woe } = await db
+    .from("program_workouts")
+    .insert(spec.workouts.map((w) => ({ program_id: programId, week_number: 1, day_of_week: w.day_of_week, name: w.name, position: w.position })))
+    .select();
+  if (woe) throw woe;
+  const byPos: Record<number, string> = {};
+  for (const w of wos ?? []) byPos[w.position] = w.id;
+
+  const exRows = spec.workouts.flatMap((w) => {
+    const woId = byPos[w.position];
+    return woId
+      ? w.exercises.map((e) => ({
+          program_workout_id: woId, exercise_id: e.exercise_id, position: e.position,
+          target_sets: e.target_sets, target_reps_min: e.target_reps_min, target_reps_max: e.target_reps_max,
+          target_rir: e.target_rir, target_rpe: null, rest_seconds: e.rest_seconds,
+          superset_group: e.superset_group, notes: e.notes,
+        }))
+      : [];
+  });
+  if (exRows.length) {
+    const { error: ee } = await db.from("program_exercises").insert(exRows);
+    if (ee) throw ee;
+  }
+
+  await setActiveProgram(db, userId, programId);
+  return programId;
+}
+
+export async function setActiveProgram(db: DB, userId: string, programId: string) {
+  await db.from("user_programs").update({ is_active: false }).eq("user_id", userId).eq("is_active", true);
+  // One row per (user, program): reactivate if it exists, else insert.
+  const { data: existing } = await db
+    .from("user_programs")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("program_id", programId)
+    .maybeSingle();
+  if (existing) {
+    const { error } = await db.from("user_programs").update({ is_active: true }).eq("id", existing.id);
+    if (error) throw error;
+  } else {
+    const { error } = await db.from("user_programs").insert({ user_id: userId, program_id: programId, is_active: true, current_week: 1 });
+    if (error) throw error;
+  }
+}
+
+export async function fetchActiveWorkoutProgram(db: DB, userId: string): Promise<ActiveProgram | null> {
+  const { data, error } = await db
+    .from("user_programs")
+    .select("*, programs(*)")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const { programs, ...up } = data as unknown as UserProgram & { programs: Program };
+  if (!programs) return null;
+  return { userProgram: up as UserProgram, program: programs };
+}
+
+export async function fetchWorkoutProgramFull(db: DB, programId: string): Promise<ProgramFull | null> {
+  const { data, error } = await db
+    .from("programs")
+    .select("*, program_weeks(*), program_workouts(*, program_exercises(*))")
+    .eq("id", programId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const p = data as unknown as ProgramFull;
+  p.program_workouts = (p.program_workouts ?? [])
+    .filter((w) => w.week_number === 1)
+    .sort((a, b) => a.position - b.position);
+  p.program_workouts.forEach((w) => w.program_exercises.sort((a, b) => a.position - b.position));
+  (p.program_weeks ?? []).sort((a, b) => a.week_number - b.week_number);
+  return p;
 }

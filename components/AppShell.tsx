@@ -2,9 +2,10 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { fetchExercises, logWeight } from "@/lib/data";
+import { fetchExercises, fetchProfile, logWeight } from "@/lib/data";
 import type { Exercise } from "@/lib/supabase/types";
 import { ACCENT, Phone, TabBar, Sheet, Btn, I, TOK, TYPE, MACRO, type TabId } from "@/lib/design";
+import { IllOrbit } from "@/lib/illustrations";
 import { AppContext, type AppCtxValue, type ScreenId, type WorkoutConfig } from "./app-context";
 
 import Today from "./screens/Today";
@@ -13,6 +14,7 @@ import History from "./screens/History";
 import SessionDetail from "./screens/SessionDetail";
 import Library from "./screens/Library";
 import ExerciseDetail from "./screens/ExerciseDetail";
+import Program from "./screens/Program";
 import Routines from "./screens/Routines";
 import RoutineEditor from "./screens/RoutineEditor";
 import WorkoutOverview from "./screens/WorkoutOverview";
@@ -20,15 +22,17 @@ import Progress from "./screens/Progress";
 import Food from "./screens/Food";
 import Profile from "./screens/Profile";
 import Settings from "./screens/Settings";
+import Onboarding from "./screens/Onboarding";
 
 const TAB_TO_SCREEN: Record<TabId, ScreenId> = {
   home: "today",
-  train: "routines",
+  train: "program",
   stats: "progress",
   more: "profile",
 };
 const SCREEN_TO_TAB: Partial<Record<ScreenId, TabId>> = {
   today: "home",
+  program: "train",
   routines: "train",
   progress: "stats",
   profile: "more",
@@ -45,6 +49,8 @@ export default function AppShell({ userId, username }: { userId: string; usernam
   const [workoutConfig, setWorkoutConfig] = React.useState<WorkoutConfig | null>(null);
   const [exercises, setExercises] = React.useState<Exercise[]>([]);
   const [quickAdd, setQuickAdd] = React.useState(false);
+  const [profileLoaded, setProfileLoaded] = React.useState(false);
+  const [onboardingNeeded, setOnboardingNeeded] = React.useState(false);
 
   const reloadExercises = React.useCallback(async () => {
     try {
@@ -57,6 +63,19 @@ export default function AppShell({ userId, username }: { userId: string; usernam
   React.useEffect(() => {
     reloadExercises();
   }, [reloadExercises]);
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const p = await fetchProfile(db, userId);
+        setOnboardingNeeded(!p?.onboarding_completed);
+      } catch {
+        setOnboardingNeeded(false); // never block the app on a fetch error
+      } finally {
+        setProfileLoaded(true);
+      }
+    })();
+  }, [db, userId]);
 
   const exMap = React.useMemo(() => {
     const m: Record<string, Exercise> = {};
@@ -103,6 +122,28 @@ export default function AppShell({ userId, username }: { userId: string; usernam
   const activeTab = SCREEN_TO_TAB[active] ?? null;
   const showTabBar = activeTab !== null;
 
+  // ── Onboarding gate: splash while loading, then questionnaire for new users ──
+  if (!profileLoaded) {
+    return (
+      <div className="stage">
+        <div className="phone" style={{ background: TOK.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="phone-dynamic-island" />
+          <div style={{ opacity: 0.55 }}><IllOrbit size={84} /></div>
+        </div>
+      </div>
+    );
+  }
+  if (onboardingNeeded) {
+    return (
+      <div className="stage">
+        <div className="phone" style={{ background: TOK.bg }}>
+          <div className="phone-dynamic-island" />
+          <Onboarding db={db} userId={userId} exercises={exercises} onComplete={() => setOnboardingNeeded(false)} />
+        </div>
+      </div>
+    );
+  }
+
   let body: React.ReactNode;
   switch (active) {
     case "today": body = <Today />; break;
@@ -110,6 +151,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     case "session-detail": body = <SessionDetail />; break;
     case "library": body = <Library />; break;
     case "exercise-detail": body = <ExerciseDetail />; break;
+    case "program": body = <Program />; break;
     case "routines": body = <Routines />; break;
     case "routine-editor": body = <RoutineEditor />; break;
     case "workout-overview": body = <WorkoutOverview />; break;

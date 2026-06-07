@@ -11,6 +11,7 @@ export type ScreenId =
   | "session-detail"
   | "library"
   | "exercise-detail"
+  | "program"
   | "routines"
   | "routine-editor"
   | "workout-overview"
@@ -19,7 +20,7 @@ export type ScreenId =
   | "profile"
   | "settings";
 
-export type WorkoutConfig = { routineId: string | null; name: string | null };
+export type WorkoutConfig = { routineId: string | null; name: string | null; programWorkoutId?: string | null };
 
 export type AppCtxValue = {
   db: DB;
