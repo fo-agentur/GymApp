@@ -13,6 +13,34 @@ Quellen-Recherche (Original-App):
 
 ---
 
+## Fortschritt (Stand 7. Juni 2026)
+
+**Verifiziert lauffähig** (end-to-end bei 390 px durchgeklickt, `pnpm build` + `typecheck`
+grün nach jeder Phase):
+
+- ✅ **Phase 7 — Rebrand & Theme**: „MacroFactor Workouts", Space-Palette (dark+light),
+  Space-Grotesk-Display-Font, eigenes Icon + Illustration-Kit. (Sign-in visuell bestätigt.)
+- ✅ **Phase 8 — Training-first IA**: Nav Home/Training/+/Statistik/Profil; trainings-
+  zentriertes Home; Ernährung demotet (Daten erhalten, über Profil erreichbar).
+- ✅ **Phase 9 — Onboarding & Generator**: 7-Schritt-Fragebogen → regelbasiertes Programm.
+  Verifiziert: erzeugt z. B. ein 4-Tage-Hypertrophie-Programm mit **24 Übungen**.
+- ✅ **Phase 11 — Logging**: Workout lädt Programm-Targets (Sätze/Wdh/RIR/Pause);
+  Coach-Vorschlag (Double-Progression) im Brand-Akzent; Set-Typen, Pausen-Timer,
+  Plate-Calc, PR-Feier bereits vorhanden.
+- ✅ **Phase 10a — Programm-Lebenszyklus**: „Programm neu generieren" (Generator erneut).
+- ✅ **Phase 14a — Analytics lokalisiert** (Statistik) + Brand-Charts.
+- 🐛 **Fix**: fehlende RLS-write-Policy auf `program_exercises` (verursachte 403 bei der
+  Generierung) → Migration `0007`. Per Laufzeit-Test gefunden & behoben.
+
+**Noch offen (optional, sekundär):** voller manueller Program-Builder + Templates (10),
+Auto-Progression-Persistenz/Wochen-Vorlauf (12), Gym-Profile-UI (13), tiefere Analytics +
+Body-Screens (14/15), Daten-Export (16).
+
+**Braucht dich (outward-facing):** GitHub-Repo `fo-agentur/GymApp` umbenennen +
+OneDrive-Ordner umbenennen (siehe §6). Alles *im* Repo ist erledigt.
+
+---
+
 ## 0. Zentrale Entscheidung (bitte bestätigen oder korrigieren)
 
 Der echte **MacroFactor Workouts** ist eine **reine Trainings-App**. Ernährung ist die
