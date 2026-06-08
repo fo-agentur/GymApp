@@ -1,58 +1,49 @@
 "use client";
+// Today — the MacroFactor Workouts "Dashboard": weekly rings (Muskeln / Sätze /
+// Übungen vs. the active program's targets) + an Insights & Analytics row
+// (Workouts bar spark + Gewichtstrend line), then recent sessions.
 import React from "react";
 import { useApp } from "../app-context";
 import {
-  fetchRoutines, fetchSessions, weeklyMuscleSets, fetchWeightLogs,
-  fetchActiveWorkoutProgram, fetchWorkoutProgramFull,
-  type RoutineFull, type ProgramFull, type ProgramWorkoutFull,
+  fetchSessions, fetchWeightLogs, fetchActiveWorkoutProgram, fetchWorkoutProgramFull,
+  type ProgramFull,
 } from "@/lib/data";
 import type { WorkoutSession, WeightLog } from "@/lib/supabase/types";
-import {
-  TOK, TYPE, Tnum, I, SectionHeader, SessionRow, EmptyState, ProgressRing,
-  WeekStrip, Btn, fmtVol, hmm,
-} from "@/lib/design";
-import { TrendChart } from "@/lib/charts";
-import { trueWeight, rawPoints, latestTrendWeight, weeklyTrendChange } from "@/lib/coach";
-import { type MuscleGroup } from "@/lib/muscles";
-import { IllConstellation } from "@/lib/illustrations";
+import { TOK, TYPE, Tnum, I, SectionHeader, SessionRow, EmptyState, ProgressRing, fmtVol, hmm } from "@/lib/design";
+import { MiniLine } from "@/lib/charts";
+import { trueWeight, latestTrendWeight, weeklyTrendChange } from "@/lib/coach";
 
-// Weekly working-set target across all muscles (rough full-program landmark).
-const WEEKLY_SET_TARGET = 80;
 const DAY_MS = 24 * 3600 * 1000;
+type SetLite = { exercise_id: string; is_warmup: boolean; completed_at: string };
 
 function datePill(iso: string) {
   const d = new Date(iso);
-  return { dow: d.toLocaleDateString("de-DE", { weekday: "short" }).toUpperCase(), day: d.getDate() };
-}
-function estMinutes(r: RoutineFull) {
-  const sets = r.routine_exercises.reduce((n, e) => n + (e.target_sets || 0), 0);
-  return Math.max(15, Math.round(sets * 3.5));
+  return { dow: d.toLocaleDateString("de-DE", { weekday: "short" }).toUpperCase().replace(".", ""), day: d.getDate() };
 }
 
 export default function Today() {
-  const { db, userId, username, exMap, goto, startWorkout } = useApp();
+  const { db, userId, exMap, goto } = useApp();
   const [weights, setWeights] = React.useState<WeightLog[]>([]);
-  const [routines, setRoutines] = React.useState<RoutineFull[]>([]);
   const [sessions, setSessions] = React.useState<WorkoutSession[]>([]);
-  const [muscleSets, setMuscleSets] = React.useState<Partial<Record<MuscleGroup, number>>>({});
+  const [setRows, setSetRows] = React.useState<SetLite[]>([]);
   const [program, setProgram] = React.useState<ProgramFull | null>(null);
+  const [basis, setBasis] = React.useState<"program" | "all">("program");
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     (async () => {
       try {
-        const [wl, r, s, m, ap] = await Promise.all([
+        const [wl, s, ap, sr] = await Promise.all([
           fetchWeightLogs(db),
-          fetchRoutines(db),
           fetchSessions(db),
-          weeklyMuscleSets(db, exMap),
           fetchActiveWorkoutProgram(db, userId),
+          db.from("sets").select("exercise_id,is_warmup,completed_at"),
         ]);
         setWeights(wl);
-        setRoutines(r);
         setSessions(s);
-        setMuscleSets(m);
+        setSetRows((sr.data ?? []) as SetLite[]);
         if (ap) setProgram(await fetchWorkoutProgramFull(db, ap.program.id));
+        else setBasis("all");
       } finally {
         setLoading(false);
       }
@@ -61,50 +52,56 @@ export default function Today() {
   }, [db, userId, exMap]);
 
   const now = new Date();
+  const weekStart = now.getTime() - 7 * DAY_MS;
 
-  // ── training week ──
-  const nowMs = now.getTime();
-  const thisWeek = sessions.filter((s) => nowMs - new Date(s.started_at).getTime() < 7 * DAY_MS);
-  const weekVolume = thisWeek.reduce((n, s) => n + (s.total_volume_kg ?? 0), 0);
-  const muscleSetTotal = Object.values(muscleSets).reduce((n, v) => n + (v ?? 0), 0);
-  const weekSets = muscleSetTotal || thisWeek.reduce((n, s) => n + (s.total_sets ?? 0), 0);
-  const trainedDays = React.useMemo(
-    () => new Set(sessions.map((s) => new Date(s.started_at).toDateString())),
-    [sessions],
-  );
-
-  // Suggested next workout: the routine least-recently trained (else the first).
-  const suggested = React.useMemo(() => {
-    if (!routines.length) return null;
-    const lastByName: Record<string, number> = {};
-    for (const s of sessions) {
-      const key = s.name ?? "";
-      if (!(key in lastByName)) lastByName[key] = new Date(s.started_at).getTime();
+  // ── this week's actuals from logged sets ──
+  const week = React.useMemo(() => {
+    const muscles = new Set<string>();
+    const exercises = new Set<string>();
+    let sets = 0;
+    const daily = Array(7).fill(0) as number[];
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    for (const r of setRows) {
+      if (r.is_warmup || !r.completed_at) continue;
+      const t = new Date(r.completed_at).getTime();
+      if (t < weekStart) continue;
+      sets++;
+      exercises.add(r.exercise_id);
+      const m = exMap[r.exercise_id]?.primary_muscle;
+      if (m) muscles.add(m);
+      const dayIdx = 6 - Math.floor((todayStart.getTime() + DAY_MS - t) / DAY_MS);
+      if (dayIdx >= 0 && dayIdx < 7) daily[dayIdx] += 1;
     }
-    return [...routines].sort(
-      (a, b) => (lastByName[a.name] ?? 0) - (lastByName[b.name] ?? 0),
-    )[0];
-  }, [routines, sessions]);
+    return { muscles: muscles.size, exercises: exercises.size, sets, daily };
+  }, [setRows, exMap, weekStart]);
 
-  // Next program day: the upcoming weekday in the plan, else the first workout.
-  const nextWorkout = React.useMemo<ProgramWorkoutFull | null>(() => {
-    const days = program?.program_workouts ?? [];
-    if (!days.length) return null;
-    const dow = now.getDay();
-    return days.find((d) => d.day_of_week >= dow) ?? days[0];
-  }, [program, now]);
+  // ── program-based weekly targets ──
+  const targets = React.useMemo(() => {
+    if (basis === "program" && program) {
+      const exIds = new Set<string>();
+      const mus = new Set<string>();
+      let sets = 0;
+      for (const w of program.program_workouts) {
+        for (const pe of w.program_exercises) {
+          exIds.add(pe.exercise_id);
+          sets += pe.target_sets || 0;
+          const m = exMap[pe.exercise_id]?.primary_muscle;
+          if (m) mus.add(m);
+        }
+      }
+      return { muscles: Math.max(1, mus.size), sets: Math.max(1, sets), exercises: Math.max(1, exIds.size) };
+    }
+    return { muscles: 11, sets: 60, exercises: 18 };
+  }, [basis, program, exMap]);
 
-  const muscleList = (ids: string[]) =>
-    Array.from(new Set(ids.map((id) => exMap[id]?.primary_muscle).filter(Boolean) as string[])).slice(0, 4);
-  const progSets = (w: ProgramWorkoutFull) => w.program_exercises.reduce((n, e) => n + (e.target_sets || 0), 0);
+  const thisWeekSessions = sessions.filter((s) => now.getTime() - new Date(s.started_at).getTime() < 7 * DAY_MS);
+  const weekVolume = thisWeekSessions.reduce((n, s) => n + (s.total_volume_kg ?? 0), 0);
 
-  // ── body sync insight ──
-  const rawW = rawPoints(weights);
   const trendW = trueWeight(weights);
   const latestW = latestTrendWeight(trendW);
   const weeklyChange = weeklyTrendChange(trendW);
 
-  const hello = username ? username.charAt(0).toUpperCase() + username.slice(1) : "";
+  if (loading) return <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Lädt…</div>;
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px 28px" }}>
@@ -112,102 +109,64 @@ export default function Today() {
       <div style={{ ...TYPE.eyebrow, color: TOK.dim }}>
         {now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}
       </div>
-      <div style={{ ...TYPE.display, color: TOK.text, marginTop: 6 }}>
-        {hello ? `Hi, ${hello}` : "Heute"}
-      </div>
+      <div style={{ ...TYPE.display, color: TOK.text, marginTop: 4 }}>Dashboard</div>
 
-      {/* ── Hero: today's training ── */}
-      <div style={{ marginTop: 18 }}>
-        {nextWorkout ? (
-          <TrainingHero
-            eyebrow="NÄCHSTES TRAINING"
-            name={nextWorkout.name}
-            exerciseCount={nextWorkout.program_exercises.length}
-            estMin={Math.max(15, Math.round(progSets(nextWorkout) * 3.5))}
-            muscles={muscleList(nextWorkout.program_exercises.map((e) => e.exercise_id))}
-            onStart={() => startWorkout({ routineId: null, name: nextWorkout.name, programWorkoutId: nextWorkout.id })}
-            onEmpty={() => startWorkout({ routineId: null, name: "Quick Workout" })}
-          />
-        ) : suggested ? (
-          <TrainingHero
-            eyebrow="NÄCHSTES TRAINING"
-            name={suggested.name}
-            exerciseCount={suggested.routine_exercises.length}
-            estMin={estMinutes(suggested)}
-            muscles={muscleList(suggested.routine_exercises.map((e) => e.exercise_id))}
-            onStart={() => goto("workout-overview", suggested.id)}
-            onEmpty={() => startWorkout({ routineId: null, name: "Quick Workout" })}
-          />
-        ) : (
-          <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "22px 18px", textAlign: "center" }}>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
-              <IllConstellation size={92} />
-            </div>
-            <div style={{ ...TYPE.cardTitle, color: TOK.text }}>Bereit für den Start?</div>
-            <div style={{ ...TYPE.caption, color: TOK.muted, marginTop: 4, marginBottom: 14, maxWidth: 260, marginInline: "auto" }}>
-              Erstelle dein erstes Programm — oder starte direkt ein leeres Training.
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn variant="secondary" full onClick={() => goto("routine-editor")}>Programm erstellen</Btn>
-              <Btn variant="primary" full onClick={() => startWorkout({ routineId: null, name: "Quick Workout" })}>Leeres Training</Btn>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── This week ── */}
-      <SectionHeader title="Diese Woche" style={{ padding: "26px 2px 12px" }} action={
-        <button onClick={() => goto("progress")} style={linkBtn}>Alle Stats<I.ChevR size={12} color={TOK.dim} /></button>
-      } />
-      <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <ProgressRing value={weekSets} max={WEEKLY_SET_TARGET} size={92} stroke={9} color={TOK.accent}>
-            <Tnum style={{ fontSize: 24, fontWeight: 700, color: TOK.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{weekSets}</Tnum>
-            <Tnum style={{ fontSize: 10, color: TOK.dim, fontWeight: 600 }}>Sätze</Tnum>
-          </ProgressRing>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", gap: 16 }}>
-              <Stat label="Volumen" value={`${fmtVol(weekVolume)} kg`} />
-              <Stat label="Einheiten" value={String(thisWeek.length)} />
-            </div>
-            <div style={{ marginTop: 14 }}>
-              <WeekStrip trained={trainedDays} accent={{ hex: TOK.accent, name: "accent", ink: TOK.accentInk }} />
-            </div>
-          </div>
+      {/* Weekly rings card */}
+      <div style={{ marginTop: 16, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "18px 16px 16px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ ...TYPE.cardTitle, color: TOK.text }}>Diese Woche</div>
+          <Tnum style={{ fontSize: 12, color: TOK.dim }}>{fmtVol(weekVolume)} kg Volumen</Tnum>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-around", gap: 4 }}>
+          <Ring label="Muskeln" value={week.muscles} target={targets.muscles} color={TOK.muscle} />
+          <Ring label="Sätze" value={week.sets} target={targets.sets} color={TOK.accent} />
+          <Ring label="Übungen" value={week.exercises} target={targets.exercises} color="var(--c-pr)" />
+        </div>
+        {/* basis toggle */}
+        <div style={{ display: "flex", gap: 4, marginTop: 16, padding: 3, background: TOK.surface2, borderRadius: 11 }}>
+          {([["all", "Alle Workouts"], ["program", "Aktives Programm"]] as [typeof basis, string][]).map(([b, label]) => {
+            const sel = basis === b;
+            const disabled = b === "program" && !program;
+            return (
+              <button key={b} disabled={disabled} onClick={() => setBasis(b)} style={{ flex: 1, height: 32, borderRadius: 8, border: "none", background: sel ? TOK.surface : "transparent", color: disabled ? TOK.dim : sel ? TOK.text : TOK.muted, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: disabled ? "default" : "pointer", boxShadow: sel ? `0 1px 3px ${TOK.shadow}` : "none", opacity: disabled ? 0.5 : 1, WebkitTapHighlightColor: "transparent" }}>{label}</button>
+            );
+          })}
         </div>
       </div>
 
-      {/* ── Body sync insight ── */}
-      <SectionHeader title="Körper" style={{ padding: "26px 2px 12px" }} />
-      <button onClick={() => goto("progress")} style={{ width: "100%", background: TOK.surface, borderRadius: 18, padding: "14px 16px", border: `1px solid ${TOK.border}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 14, WebkitTapHighlightColor: "transparent" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ ...TYPE.col, color: TOK.dim }}>Gewichtstrend</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}>
-            <Tnum style={{ fontSize: 22, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>
-              {latestW != null ? latestW.toFixed(1) : "—"}
-            </Tnum>
+      {/* Insights & Analytics */}
+      <SectionHeader title="Insights & Analytik" style={{ padding: "24px 2px 12px" }} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {/* Workouts spark */}
+        <button onClick={() => goto("progress")} style={{ textAlign: "left", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, padding: "12px 14px", cursor: "pointer", fontFamily: "inherit", WebkitTapHighlightColor: "transparent" }}>
+          <div style={{ ...TYPE.bodyEm, color: TOK.text }}>Workouts</div>
+          <div style={{ fontSize: 11, color: TOK.dim, marginBottom: 8 }}>Letzte 7 Tage</div>
+          <DaySpark daily={week.daily} />
+          <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 8 }}>
+            <Tnum style={{ fontSize: 18, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em" }}>{week.sets}</Tnum>
+            <span style={{ fontSize: 11, color: TOK.muted }}>Sätze</span>
+          </div>
+        </button>
+        {/* Weight trend */}
+        <button onClick={() => goto("progress")} style={{ textAlign: "left", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, padding: "12px 14px", cursor: "pointer", fontFamily: "inherit", WebkitTapHighlightColor: "transparent" }}>
+          <div style={{ ...TYPE.bodyEm, color: TOK.text }}>Gewichtstrend</div>
+          <div style={{ fontSize: 11, color: TOK.dim, marginBottom: 8 }}>Letzte 7 Tage</div>
+          <div style={{ height: 38 }}>
+            {trendW.length > 1 ? <MiniLine data={trendW.map((p) => p.y)} color={TOK.accent} height={38} /> : <div style={{ height: 38, display: "flex", alignItems: "center", fontSize: 11, color: TOK.dim }}>Noch keine Daten</div>}
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 8 }}>
+            <Tnum style={{ fontSize: 18, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em" }}>{latestW != null ? latestW.toFixed(1) : "—"}</Tnum>
             <span style={{ fontSize: 11, color: TOK.muted }}>kg</span>
-            {weeklyChange != null && (
-              <Tnum style={{ fontSize: 11, fontWeight: 600, color: weeklyChange < 0 ? TOK.pr : TOK.muted, marginLeft: 4 }}>
-                {weeklyChange >= 0 ? "+" : ""}{weeklyChange.toFixed(2)}/Wo
-              </Tnum>
-            )}
+            {weeklyChange != null && <Tnum style={{ fontSize: 11, fontWeight: 700, color: weeklyChange < 0 ? "var(--c-pr)" : TOK.muted, marginLeft: 2 }}>{weeklyChange >= 0 ? "+" : ""}{weeklyChange.toFixed(2)}</Tnum>}
           </div>
-          {weights.length === 0 && <div style={{ fontSize: 11, color: TOK.dim, marginTop: 4 }}>Gewicht loggen über +</div>}
-        </div>
-        {trendW.length > 1 ? (
-          <div style={{ width: 120, height: 44 }}><TrendChart raw={rawW} trend={trendW} height={44} /></div>
-        ) : <I.ChevR size={16} color={TOK.dim} />}
-      </button>
-
-      {/* ── Recent ── */}
-      <SectionHeader title="Zuletzt" style={{ padding: "26px 2px 8px" }} action={
+        </button>
+      </div>
+      {/* Recent */}
+      <SectionHeader title="Zuletzt" style={{ padding: "24px 2px 8px" }} action={
         sessions.length > 0 ? <button onClick={() => goto("history")} style={linkBtn}>Historie<I.ChevR size={12} color={TOK.dim} /></button> : undefined
       } />
-      {loading ? (
-        <div style={{ padding: "8px 4px", color: TOK.dim, fontSize: 13 }}>Lädt…</div>
-      ) : sessions.length === 0 ? (
-        <EmptyState icon={<I.History size={20} />} title="Noch keine Workouts" description="Starte oben dein erstes Training — es erscheint hier, sobald du fertig bist." />
+      {sessions.length === 0 ? (
+        <EmptyState icon={<I.History size={20} />} title="Noch keine Workouts" description="Starte dein erstes Training über das Training-Tab oder den + Button." />
       ) : (
         <div>
           {sessions.slice(0, 4).map((s) => (
@@ -231,44 +190,31 @@ const linkBtn: React.CSSProperties = {
   cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, color: TOK.dim, padding: 0,
 };
 
-function TrainingHero({ eyebrow, name, exerciseCount, estMin, muscles, onStart, onEmpty }: {
-  eyebrow: string; name: string; exerciseCount: number; estMin: number; muscles: string[]; onStart: () => void; onEmpty: () => void;
-}) {
+function Ring({ label, value, target, color }: { label: string; value: number; target: number; color: string }) {
+  const left = Math.max(0, target - value);
   return (
-    <div style={{
-      borderRadius: 20, padding: "18px 18px 16px",
-      background: `linear-gradient(150deg, ${TOK.accentSoft}, ${TOK.surface} 65%)`,
-      border: `1px solid ${TOK.border}`,
-    }}>
-      <div style={{ ...TYPE.eyebrow, color: TOK.accent }}>{eyebrow}</div>
-      <div style={{ ...TYPE.h2, color: TOK.text, marginTop: 8 }}>{name}</div>
-      <div style={{ display: "flex", gap: 8, alignItems: "baseline", marginTop: 6, fontSize: 13, color: TOK.muted }}>
-        <Tnum>{exerciseCount} Übungen</Tnum>
-        <span style={{ color: TOK.dim }}>·</span>
-        <Tnum>~{estMin} Min</Tnum>
-      </div>
-      {muscles.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-          {muscles.map((m) => (
-            <span key={m} style={{ fontSize: 11, color: TOK.muted, background: TOK.surface2, borderRadius: 6, padding: "3px 8px" }}>{m}</span>
-          ))}
-        </div>
-      )}
-      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-        <Btn variant="primary" full size="lg" onClick={onStart} leadIcon={<I.Dumbbell size={18} color="var(--c-primary-ink)" w={2} />}>
-          Training starten
-        </Btn>
-        <Btn variant="secondary" size="lg" onClick={onEmpty}><I.Plus size={18} color={TOK.text} w={2} /></Btn>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <ProgressRing value={value} max={target} size={84} stroke={8} color={color}>
+        <Tnum style={{ fontSize: 22, fontWeight: 800, color: TOK.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</Tnum>
+        <Tnum style={{ fontSize: 10, color: TOK.dim, fontWeight: 600 }}>{left} übrig</Tnum>
+      </ProgressRing>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: TOK.text }}>{label}</div>
+        <Tnum style={{ fontSize: 11, color: TOK.dim }}>Ziel {target}</Tnum>
       </div>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function DaySpark({ daily }: { daily: number[] }) {
+  const max = Math.max(1, ...daily);
   return (
-    <div>
-      <Tnum style={{ fontSize: 18, fontWeight: 700, color: TOK.text, letterSpacing: "-0.02em" }}>{value}</Tnum>
-      <div style={{ ...TYPE.col, color: TOK.dim, marginTop: 2 }}>{label}</div>
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 38 }}>
+      {daily.map((v, i) => (
+        <div key={i} style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end" }}>
+          <div style={{ width: "100%", height: `${Math.max(v > 0 ? 8 : 2, (v / max) * 100)}%`, background: v > 0 ? TOK.accent : TOK.surface2, borderRadius: 3 }} />
+        </div>
+      ))}
     </div>
   );
 }
