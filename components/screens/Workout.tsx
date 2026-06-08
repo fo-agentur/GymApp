@@ -15,6 +15,8 @@ import {
 import type { WorkoutSession, Exercise } from "@/lib/supabase/types";
 import { TOK, Tnum, I, Sheet, fmtW, mmss, epley1rm, rirColor } from "@/lib/design";
 import { loadExerciseDB } from "@/lib/exercise-db";
+import MuscleMap from "../MuscleMap";
+import type { MuscleGroup } from "@/lib/muscles";
 import ExercisePicker from "./ExercisePicker";
 
 export type SetType = "normal" | "warmup" | "drop" | "failure" | "myorep" | "partial";
@@ -66,7 +68,11 @@ export default function Workout() {
   const [ready, setReady] = React.useState(false);
   const [restTimer, setRestTimer] = React.useState<{ total: number; remaining: number } | null>(null);
   const [recentIds, setRecentIds] = React.useState<string[]>([]);
-  const [celebration, setCelebration] = React.useState<{ prs: { name: string; weight: number }[] } | null>(null);
+  const [completed, setCompleted] = React.useState<{
+    prs: { name: string; weight: number }[];
+    muscleSets: Partial<Record<MuscleGroup, number>>;
+    volume: number; sets: number; duration: number;
+  } | null>(null);
   const [exitPrompt, setExitPrompt] = React.useState(false);
   const [barWeight, setBarWeight] = React.useState(20);
   const startedRef = React.useRef(false);
@@ -329,8 +335,11 @@ export default function Workout() {
       notes: null,
     });
     const prs: { name: string; weight: number }[] = [];
+    const muscleSets: Partial<Record<MuscleGroup, number>> = {};
     for (const e of exs) {
       const doneSetsEx = e.sets.filter((s) => s.status === "done" && !s.warmup);
+      const muscle = (exMap[e.exerciseId]?.primary_muscle ?? e.muscle) as MuscleGroup;
+      if (muscle) muscleSets[muscle] = (muscleSets[muscle] ?? 0) + doneSetsEx.length;
       const sessionBest1rm = Math.max(0, ...doneSetsEx.map((s) => epley1rm(s.weight ?? 0, s.reps ?? 0)));
       const top = Math.max(0, ...doneSetsEx.map((s) => s.weight ?? 0));
       if (sessionBest1rm > e.priorBest1rm && e.priorBest1rm > 0) prs.push({ name: e.name, weight: top });
@@ -341,11 +350,9 @@ export default function Workout() {
       } catch {
         /* unsupported */
       }
-      setFinishing(false);
-      setCelebration({ prs });
-      return;
     }
-    goto("history");
+    setFinishing(false);
+    setCompleted({ prs, muscleSets, volume, sets: doneSets, duration: elapsed });
   }
 
   async function exitWorkout() {
@@ -509,7 +516,7 @@ export default function Workout() {
           </div>
         </Sheet>
 
-        {celebration && <PRCelebration prs={celebration.prs} accentHex={accent.hex} accentInk={accent.ink} onClose={() => goto("history")} />}
+        {completed && <WorkoutComplete data={completed} accentHex={accent.hex} onClose={() => goto("history")} />}
       </div>
       <div className="home-indicator" />
     </>
@@ -658,34 +665,58 @@ function Keypad({ field, rir, accentHex, accentInk, onDigit, onBackspace, onRir,
   );
 }
 
-function PRCelebration({ prs, accentHex, accentInk, onClose }: { prs: { name: string; weight: number }[]; accentHex: string; accentInk: string; onClose: () => void }) {
-  const confetti = React.useMemo(
-    () => Array.from({ length: 26 }, (_, i) => ({
-      left: (i * 37) % 100,
-      delay: (i % 5) * 0.12,
-      dur: 1.6 + (i % 4) * 0.3,
-      color: [accentHex, "#22c55e", "#f5a623", "#3b82f6"][i % 4],
-      size: 6 + (i % 4) * 2,
-    })),
-    [accentHex]
-  );
+function WorkoutComplete({ data, accentHex, onClose }: {
+  data: { prs: { name: string; weight: number }[]; muscleSets: Partial<Record<MuscleGroup, number>>; volume: number; sets: number; duration: number };
+  accentHex: string; onClose: () => void;
+}) {
+  const mins = Math.max(1, Math.round(data.duration / 60));
   return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 100, background: "rgba(10,10,12,0.86)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, overflow: "hidden" }}>
-      {confetti.map((c, i) => (
-        <span key={i} style={{ position: "absolute", top: -20, left: `${c.left}%`, width: c.size, height: c.size, borderRadius: 2, background: c.color, animation: `gymConfetti ${c.dur}s ${c.delay}s ease-in forwards` }} />
-      ))}
-      <div className="gym-pop" style={{ fontSize: 56, marginBottom: 8 }}>🏆</div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em" }}>Neuer Rekord{prs.length > 1 ? "e" : ""}!</div>
-      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 4, marginBottom: 20 }}>Du hast deinen Bestwert geknackt</div>
-      <div style={{ width: "100%", maxWidth: 300, display: "flex", flexDirection: "column", gap: 8 }}>
-        {prs.slice(0, 4).map((p, i) => (
-          <div key={i} className="gym-fade" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(255,255,255,0.08)", borderRadius: 12, animationDelay: `${i * 90}ms` }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 10 }}>{p.name}</span>
-            <Tnum style={{ fontSize: 15, fontWeight: 800, color: accentHex, flexShrink: 0 }}>{fmtW(p.weight)} kg</Tnum>
-          </div>
-        ))}
+    <div style={{ position: "absolute", inset: 0, zIndex: 100, background: TOK.bg, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "10px 8px", minHeight: 52 }}>
+        <button onClick={onClose} style={iconBtn} aria-label="Schließen"><I.X size={22} color={TOK.text} /></button>
+        <div style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: 700, color: TOK.text }}>Workout abgeschlossen</div>
+        <div style={{ width: 36 }} />
       </div>
-      <button onClick={onClose} style={{ marginTop: 24, width: "100%", maxWidth: 300, height: 52, background: "#fff", color: "#0a0a0b", border: "none", borderRadius: 16, fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Weiter</button>
+      <div style={{ flex: 1, overflowY: "auto", padding: "4px 16px 16px" }}>
+        <div style={{ textAlign: "center", margin: "4px 0 14px", fontSize: 15, fontWeight: 700, color: TOK.text }}>Stark gemacht! 💪</div>
+        <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 18, padding: "14px 8px 6px" }}>
+          <div style={{ ...colHead, textAlign: "center", marginBottom: 8 }}>Trainierte Muskeln</div>
+          <MuscleMap sets={data.muscleSets} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
+          <Summary label="Dauer" value={String(mins)} unit="Min" />
+          <Summary label="Volumen" value={fmtW(Math.round(data.volume))} unit="kg" />
+          <Summary label="Sätze" value={String(data.sets)} unit="" />
+        </div>
+        {data.prs.length > 0 && (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 800, color: TOK.text, margin: "18px 2px 8px" }}>Neue Rekorde 🏆</div>
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+              {data.prs.slice(0, 6).map((p, i) => (
+                <div key={i} style={{ flexShrink: 0, minWidth: 150, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 14, padding: "12px 14px" }}>
+                  <Tnum style={{ fontSize: 20, fontWeight: 800, color: accentHex, letterSpacing: "-0.02em" }}>{fmtW(p.weight)}<span style={{ fontSize: 12, color: TOK.muted, marginLeft: 3 }}>kg</span></Tnum>
+                  <div style={{ fontSize: 11, color: "var(--c-pr)", fontWeight: 700, marginTop: 2 }}>Neuer Rekord</div>
+                  <div style={{ fontSize: 12, color: TOK.muted, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      <div style={{ padding: "8px 16px 22px", borderTop: `1px solid ${TOK.border}` }}>
+        <button onClick={onClose} style={{ width: "100%", height: 54, background: TOK.text, color: "var(--c-bg)", border: "none", borderRadius: 16, fontFamily: "inherit", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>Fertig</button>
+      </div>
+    </div>
+  );
+}
+function Summary({ label, value, unit }: { label: string; value: string; unit: string }) {
+  return (
+    <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 14, padding: "12px 8px", textAlign: "center" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3 }}>
+        <Tnum style={{ fontSize: 20, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em" }}>{value}</Tnum>
+        {unit && <span style={{ fontSize: 11, color: TOK.muted, fontWeight: 600 }}>{unit}</span>}
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: TOK.dim, marginTop: 4 }}>{label}</div>
     </div>
   );
 }
