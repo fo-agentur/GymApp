@@ -276,7 +276,7 @@ export function ExerciseRow({ thumb, name, muscle, equipment, onTap, trailing }:
       display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 16px",
       background: "transparent", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit", minHeight: 56, WebkitTapHighlightColor: "transparent",
     }}>
-      <div style={{ width: 32, height: 32, borderRadius: 6, flexShrink: 0, background: thumb || "linear-gradient(135deg, #3f3f46, #18181b)", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: 600 }}>
+      <div style={{ width: 38, height: 38, borderRadius: 9, flexShrink: 0, background: thumb || TOK.surface2, border: `1px solid ${TOK.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: TOK.dim, fontSize: 14, fontWeight: 700 }}>
         {(name?.[0] || "?").toUpperCase()}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>

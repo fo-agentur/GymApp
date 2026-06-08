@@ -2,7 +2,7 @@
 import React from "react";
 import { useApp } from "../app-context";
 import { fetchSessionDetail, type SessionDetail as Detail, type LoggedSet } from "@/lib/data";
-import { TOK, TYPE, Tnum, ScreenHeader, SectionHeader, Card, SetRow, muscleTone, fmtVol, hmm } from "@/lib/design";
+import { TOK, TYPE, Tnum, ScreenHeader, SectionHeader, Card, SetRow, fmtVol, hmm } from "@/lib/design";
 
 export default function SessionDetail() {
   const { db, params, exMap, accent, goto } = useApp();
@@ -59,10 +59,10 @@ export default function SessionDetail() {
           const ex = exMap[exId];
           const exSets = byEx[exId];
           return (
-            <div key={exId} style={{ background: TOK.surface, borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
+            <div key={exId} style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px 8px" }}>
-                <div style={{ width: 32, height: 32, borderRadius: 6, background: muscleTone(ex?.primary_muscle ?? ""), flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: 600 }}>
-                  {(ex?.name ?? "?")[0]}
+                <div style={{ width: 38, height: 38, borderRadius: 9, background: TOK.surface2, border: `1px solid ${TOK.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: TOK.dim, fontSize: 14, fontWeight: 700 }}>
+                  {(ex?.name ?? "?")[0]?.toUpperCase()}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ ...TYPE.bodyEm, color: TOK.text }}>{ex?.name ?? "Exercise"}</div>

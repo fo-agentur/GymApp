@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import type { Exercise } from "@/lib/supabase/types";
-import { TOK, Chip, SectionHeader, ExerciseRow, I, muscleTone, type Accent } from "@/lib/design";
+import { TOK, Chip, SectionHeader, ExerciseRow, I, type Accent } from "@/lib/design";
 
 export const EQUIPMENT_FILTERS = ["All", "Barbell", "Dumbbell", "Machine", "Cable", "Bodyweight"];
 export const MUSCLE_ORDER = ["Chest", "Back", "Shoulders", "Quads", "Hamstrings", "Glutes", "Biceps", "Triceps", "Forearms", "Core", "Calves"];
@@ -90,7 +90,6 @@ export default function ExercisePicker({
           {recent.map((e) => (
             <ExerciseRow
               key={"r-" + e.id}
-              thumb={muscleTone(e.primary_muscle)}
               name={e.name}
               muscle={e.primary_muscle}
               equipment={cap(e.category)}
@@ -115,7 +114,6 @@ export default function ExercisePicker({
           {g.items.map((e) => (
             <ExerciseRow
               key={e.id}
-              thumb={muscleTone(e.primary_muscle)}
               name={e.name}
               muscle={e.primary_muscle}
               equipment={cap(e.category)}

@@ -2,7 +2,7 @@
 import React from "react";
 import { useApp } from "../app-context";
 import { createCustomExercise } from "@/lib/data";
-import { TOK, TYPE, ScreenHeader, SectionHeader, ExerciseRow, Chip, EmptyState, FAB, Sheet, Btn, Segmented, I, muscleTone } from "@/lib/design";
+import { TOK, TYPE, ScreenHeader, SectionHeader, ExerciseRow, Chip, EmptyState, FAB, Sheet, Btn, Segmented, I } from "@/lib/design";
 import { EQUIPMENT_FILTERS, MUSCLE_ORDER, cap } from "./ExercisePicker";
 
 export default function Library() {
@@ -46,7 +46,7 @@ export default function Library() {
         <div key={g.muscle} style={{ marginBottom: 8 }}>
           <SectionHeader title={g.muscle} style={{ padding: "14px 16px 6px" }} />
           {g.items.map((e) => (
-            <ExerciseRow key={e.id} thumb={muscleTone(e.primary_muscle)} name={e.name} muscle={e.primary_muscle} equipment={cap(e.category)} onTap={() => goto("exercise-detail", e.id)} />
+            <ExerciseRow key={e.id} name={e.name} muscle={e.primary_muscle} equipment={cap(e.category)} onTap={() => goto("exercise-detail", e.id)} />
           ))}
         </div>
       ))}

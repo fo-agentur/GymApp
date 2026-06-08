@@ -2,7 +2,7 @@
 import React from "react";
 import { useApp } from "../app-context";
 import { fetchRoutine, createRoutine, updateRoutine, deleteRoutine, fetchRecentExerciseIds, type NewRoutineEx } from "@/lib/data";
-import { TOK, TYPE, Tnum, ScreenHeader, SectionHeader, Sheet, Btn, MiniStepper, I, muscleTone, mmss } from "@/lib/design";
+import { TOK, TYPE, Tnum, ScreenHeader, SectionHeader, Sheet, Btn, MiniStepper, I, mmss } from "@/lib/design";
 import ExercisePicker from "./ExercisePicker";
 
 type EditEx = NewRoutineEx;
@@ -101,7 +101,7 @@ export default function RoutineEditor() {
                   <button onClick={() => move(i, -1)} style={moveBtn}><I.ChevU size={14} color={TOK.dim} /></button>
                   <button onClick={() => move(i, 1)} style={moveBtn}><I.ChevD size={14} color={TOK.dim} /></button>
                 </div>
-                <div style={{ width: 32, height: 32, borderRadius: 6, background: muscleTone(e?.primary_muscle ?? ""), flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: 600 }}>{(e?.name ?? "?")[0]}</div>
+                <div style={{ width: 38, height: 38, borderRadius: 9, background: TOK.surface2, border: `1px solid ${TOK.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: TOK.dim, fontSize: 14, fontWeight: 700 }}>{(e?.name ?? "?")[0]?.toUpperCase()}</div>
                 <button onClick={() => setEditing(i)} style={{ flex: 1, textAlign: "left", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", minWidth: 0 }}>
                   <div style={{ ...TYPE.body, color: TOK.text, fontWeight: 500 }}>{e?.name ?? "Exercise"}</div>
                   <div style={{ fontSize: 11, color: TOK.muted, marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
