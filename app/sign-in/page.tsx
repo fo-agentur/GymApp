@@ -105,11 +105,11 @@ export default function SignInPage() {
                 if (!busy) submit();
               }}
             >
-              <label style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8, display: "block" }}>Username</label>
+              <label style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8, display: "block" }}>Username or e-mail</label>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="yourname"
+                placeholder="yourname or you@example.com"
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}

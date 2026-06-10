@@ -5,7 +5,10 @@
 export const USERNAME_DOMAIN = "gymapp.local";
 
 export function usernameToEmail(username: string): string {
-  return `${username.trim().toLowerCase()}@${USERNAME_DOMAIN}`;
+  const name = username.trim().toLowerCase();
+  // If the user typed a full e-mail address, keep only the local part.
+  const localPart = name.includes("@") ? name.split("@")[0] : name;
+  return `${localPart}@${USERNAME_DOMAIN}`;
 }
 
 export function emailToUsername(email: string | null | undefined): string {
@@ -15,7 +18,9 @@ export function emailToUsername(email: string | null | undefined): string {
 
 // Returns an error string if invalid, otherwise null.
 export function validateUsername(username: string): string | null {
-  const u = username.trim();
+  const raw = username.trim();
+  // Accept full e-mail addresses — validate only the local part.
+  const u = raw.includes("@") ? raw.split("@")[0] : raw;
   if (u.length < 3) return "Username must be at least 3 characters.";
   if (u.length > 30) return "Username must be at most 30 characters.";
   if (!/^[a-zA-Z0-9_.]+$/.test(u)) return "Only letters, numbers, underscore and dot.";
