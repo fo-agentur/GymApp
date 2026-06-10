@@ -90,12 +90,12 @@ export default function SignInPage() {
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
                 <IllOrbit size={88} />
               </div>
-              <div style={{ ...TYPE.eyebrow, color: TOK.accent, marginBottom: 8, letterSpacing: "0.14em" }}>MACROFACTOR</div>
+              <div style={{ ...TYPE.eyebrow, color: TOK.accent, marginBottom: 8, letterSpacing: "0.14em" }}>TRAINING</div>
               <div style={{ fontFamily: FONT_DISPLAY, fontSize: 42, fontWeight: 800, color: TOK.text, letterSpacing: "-0.035em", lineHeight: 1 }}>
-                Workouts
+                GymApp
               </div>
               <div style={{ fontSize: 13, color: TOK.dim, marginTop: 14, letterSpacing: "-0.01em" }}>
-                Science-based training that adapts.
+                Deine Pläne. Dein Training. Sauber getrackt.
               </div>
             </div>
 
@@ -105,18 +105,18 @@ export default function SignInPage() {
                 if (!busy) submit();
               }}
             >
-              <label style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8, display: "block" }}>Username</label>
+              <label style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8, display: "block" }}>Benutzername</label>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="yourname"
+                placeholder="deinname"
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
                 style={inputStyle}
               />
               <div style={{ height: 12 }} />
-              <label style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8, display: "block" }}>Password</label>
+              <label style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8, display: "block" }}>Passwort</label>
               <input
                 type="password"
                 value={password}
@@ -131,7 +131,7 @@ export default function SignInPage() {
 
               <div style={{ height: 16 }} />
               <Btn variant="primary" size="lg" full accent={ACCENT} type="submit" disabled={busy}>
-                {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
+                {busy ? "Bitte warten…" : mode === "signin" ? "Anmelden" : "Konto erstellen"}
               </Btn>
             </form>
 
@@ -153,7 +153,7 @@ export default function SignInPage() {
                 textAlign: "center",
               }}
             >
-              {mode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
+              {mode === "signin" ? "Neu hier? Konto erstellen" : "Schon ein Konto? Anmelden"}
             </button>
           </div>
         </div>
@@ -165,9 +165,9 @@ export default function SignInPage() {
 
 function humanError(msg: string): string {
   const m = msg.toLowerCase();
-  if (m.includes("invalid login")) return "Wrong username or password.";
+  if (m.includes("invalid login")) return "Benutzername oder Passwort falsch.";
   if (m.includes("already registered") || m.includes("already been registered"))
-    return "That username is taken. Try signing in instead.";
-  if (m.includes("not confirmed")) return "E-mail confirmation is enabled — ask the admin to disable it.";
+    return "Dieser Benutzername ist vergeben. Versuch dich anzumelden.";
+  if (m.includes("not confirmed")) return "E-Mail-Bestätigung ist aktiv — bitte den Admin, sie auszuschalten.";
   return msg;
 }

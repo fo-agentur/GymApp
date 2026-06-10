@@ -16,13 +16,13 @@ export function emailToUsername(email: string | null | undefined): string {
 // Returns an error string if invalid, otherwise null.
 export function validateUsername(username: string): string | null {
   const u = username.trim();
-  if (u.length < 3) return "Username must be at least 3 characters.";
-  if (u.length > 30) return "Username must be at most 30 characters.";
-  if (!/^[a-zA-Z0-9_.]+$/.test(u)) return "Only letters, numbers, underscore and dot.";
+  if (u.length < 3) return "Benutzername braucht mindestens 3 Zeichen.";
+  if (u.length > 30) return "Benutzername darf höchstens 30 Zeichen haben.";
+  if (!/^[a-zA-Z0-9_.]+$/.test(u)) return "Nur Buchstaben, Zahlen, Unterstrich und Punkt.";
   return null;
 }
 
 export function validatePassword(password: string): string | null {
-  if (password.length < 6) return "Password must be at least 6 characters.";
+  if (password.length < 6) return "Passwort braucht mindestens 6 Zeichen.";
   return null;
 }

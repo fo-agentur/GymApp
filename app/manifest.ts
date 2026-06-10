@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "MacroFactor Workouts",
-    short_name: "Workouts",
-    description: "Science-based training that adapts. Your coach in your pocket.",
+    name: "GymApp",
+    short_name: "GymApp",
+    description: "Eigene Trainingspläne, sauberes Workout-Tracking, klare Statistik.",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",

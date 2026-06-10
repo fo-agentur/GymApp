@@ -45,10 +45,6 @@
   --c-rir-5: #1e9e4a;
   --c-rir-6: #3b82f6;
   --c-rir-x: #9a9aa2;
-  --c-kcal: #2f6fe0;
-  --c-protein: #e85d34;
-  --c-fat: #d99a2b;
-  --c-carbs: #1faf63;
   --c-shadow: rgba(18, 18, 28, 0.10);
   --c-stage: #ececee;
 }
@@ -85,10 +81,6 @@
   --c-rir-5: #28b86a;
   --c-rir-6: #4d86ff;
   --c-rir-x: #7a7a82;
-  --c-kcal: #4d8dff;
-  --c-protein: #ff7043;
-  --c-fat: #ffc24b;
-  --c-carbs: #3ddc84;
   --c-shadow: rgba(0, 0, 0, 0.5);
   --c-stage: #050506;
 }
@@ -278,4 +270,9 @@ textarea {
     height: auto !important;
     padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
   }
+}
+
+/* The center + protrudes above the bar; never clip or cover it. */
+.phone-tabbar {
+  overflow: visible;
 }

@@ -31,14 +31,6 @@ export const TOK = {
   shadow: "var(--c-shadow)",
 };
 
-// Macro colour semantics for synced body/nutrition data viz (MacroFactor-style).
-export const MACRO = {
-  kcal: "var(--c-kcal)",
-  protein: "var(--c-protein)",
-  fat: "var(--c-fat)",
-  carbs: "var(--c-carbs)",
-};
-
 // Training set-type colour semantics (logging + analytics).
 export const SET = {
   warmup: "var(--c-set-warmup)",
@@ -117,21 +109,6 @@ export function epley1rm(weight: number, reps: number) {
   if (reps === 1) return weight;
   return Math.round(weight * (1 + reps / 30) * 100) / 100;
 }
-export const muscleTone = (m: string) =>
-  (({
-    Chest: "linear-gradient(135deg, #44403c, #18181b)",
-    Back: "linear-gradient(135deg, #3f3f46, #18181b)",
-    Shoulders: "linear-gradient(135deg, #57534e, #18181b)",
-    Quads: "linear-gradient(135deg, #44403c, #1c1917)",
-    Hamstrings: "linear-gradient(135deg, #3f3f46, #1c1917)",
-    Glutes: "linear-gradient(135deg, #525252, #1c1917)",
-    Biceps: "linear-gradient(135deg, #4b5563, #18181b)",
-    Triceps: "linear-gradient(135deg, #404040, #18181b)",
-    Forearms: "linear-gradient(135deg, #4b5563, #18181b)",
-    Core: "linear-gradient(135deg, #44403c, #18181b)",
-    Calves: "linear-gradient(135deg, #3f3f46, #1c1917)",
-  } as Record<string, string>)[m] || "linear-gradient(135deg, #3f3f46, #18181b)");
-
 // ── Icons ───────────────────────────────────────────────────────
 type IconProps = { d?: string; size?: number; color?: string; w?: number; viewBox?: string };
 export function Icon({ d, size = 18, color = "currentColor", w = 1.75, viewBox = "0 0 24 24" }: IconProps) {
@@ -268,16 +245,22 @@ export function SessionRow({ datePill, routine, volume, duration, top, onTap }: 
   );
 }
 
-export function ExerciseRow({ thumb, name, muscle, equipment, onTap, trailing }: {
-  thumb?: string; name: string; muscle?: string; equipment?: string; onTap?: () => void; trailing?: React.ReactNode;
+export function ExerciseRow({ img, name, muscle, equipment, onTap, trailing }: {
+  img?: string | null; name: string; muscle?: string; equipment?: string; onTap?: () => void; trailing?: React.ReactNode;
 }) {
+  const [imgOk, setImgOk] = React.useState(true);
   return (
     <button onClick={onTap} style={{
       display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 16px",
       background: "transparent", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit", minHeight: 56, WebkitTapHighlightColor: "transparent",
     }}>
-      <div style={{ width: 38, height: 38, borderRadius: 9, flexShrink: 0, background: thumb || TOK.surface2, border: `1px solid ${TOK.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: TOK.dim, fontSize: 14, fontWeight: 700 }}>
-        {(name?.[0] || "?").toUpperCase()}
+      <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: img && imgOk ? "#fff" : TOK.surface2, border: `1px solid ${TOK.border}`, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", color: TOK.dim, fontSize: 14, fontWeight: 700 }}>
+        {img && imgOk ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={img} alt="" loading="lazy" onError={() => setImgOk(false)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          (name?.[0] || "?").toUpperCase()
+        )}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ ...TYPE.body, color: TOK.text, fontWeight: 500 }}>{name}</div>
@@ -353,8 +336,12 @@ export function Sheet({ open, onClose, children, title, label }: { open: boolean
         <div style={{ padding: "10px 0 4px", display: "flex", justifyContent: "center" }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: TOK.border }} />
         </div>
+        {/* explicit close — tall sheets leave almost no backdrop to tap */}
+        <button onClick={onClose} aria-label="Schließen" style={{ position: "absolute", top: 10, right: 10, width: 34, height: 34, borderRadius: 999, background: TOK.surface3, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", WebkitTapHighlightColor: "transparent", zIndex: 1 }}>
+          <I.X size={16} color={TOK.muted} />
+        </button>
         {(title || label) && (
-          <div style={{ padding: "6px 20px 8px" }}>
+          <div style={{ padding: "6px 52px 8px 20px" }}>
             {label && <div style={{ ...TYPE.eyebrow, color: TOK.dim, marginBottom: 4 }}>{label}</div>}
             {title && <div style={{ ...TYPE.cardTitle, color: TOK.text }}>{title}</div>}
           </div>
@@ -547,7 +534,7 @@ export function Phone({ children, bg = TOK.bg, tabBar, hideStatusBar }: { childr
 }
 
 export type TabId = "home" | "train" | "stats" | "more";
-export function TabBar({ active, onChange, onAdd, accent = ACCENT }: { active: TabId | null; onChange?: (t: TabId) => void; onAdd?: () => void; accent?: Accent }) {
+export function TabBar({ active, onChange, onAdd, addOpen, accent = ACCENT }: { active: TabId | null; onChange?: (t: TabId) => void; onAdd?: () => void; addOpen?: boolean; accent?: Accent }) {
   const tabs: { id: TabId; label: string; icon: (p: IP) => React.ReactElement }[] = [
     { id: "home", label: "Home", icon: I.Grid },
     { id: "train", label: "Training", icon: I.Dumbbell },
@@ -567,15 +554,18 @@ export function TabBar({ active, onChange, onAdd, accent = ACCENT }: { active: T
     );
   };
   return (
-    <div className="phone-tabbar" style={{ flexShrink: 0, borderTop: `1px solid ${TOK.border}`, background: TOK.surface, height: 64 + 24, paddingBottom: 24, display: "flex", alignItems: "flex-start" }}>
+    // position:relative + zIndex keep the protruding + above screen content
+    // (pinned start buttons, FABs) so it is never clipped or covered.
+    <div className="phone-tabbar" style={{ position: "relative", zIndex: 55, flexShrink: 0, borderTop: `1px solid ${TOK.border}`, background: TOK.surface, height: 64 + 24, paddingBottom: 24, display: "flex", alignItems: "flex-start" }}>
       {tabBtn(tabs[0])}
       {tabBtn(tabs[1])}
       {/* center add FAB */}
       <div style={{ width: 70, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 12 }}>
-        <button onClick={onAdd} aria-label="Add" style={{
+        <button onClick={onAdd} aria-label={addOpen ? "Schließen" : "Hinzufügen"} style={{
           width: 54, height: 54, borderRadius: 999, background: accent.hex, color: accent.ink, border: "none", cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", marginTop: -20,
           boxShadow: `0 10px 26px ${TOK.shadow}, 0 3px 8px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
+          transform: addOpen ? "rotate(45deg)" : "rotate(0deg)", transition: "transform 220ms cubic-bezier(0.22,1,0.36,1)",
         }}>
           <I.Plus size={24} color={accent.ink} w={2.25} />
         </button>
@@ -592,7 +582,7 @@ export function ScreenHeader({ back, onBack, title, trailing, large = false }: {
     return (
       <div style={{ padding: "8px 16px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", alignItems: "center", minHeight: 36 }}>
-          {back && <button onClick={onBack} style={iconBtn}><I.ChevL size={20} color={TOK.text} /></button>}
+          {back && <button onClick={onBack} style={iconBtn} aria-label="Zurück"><I.ChevL size={20} color={TOK.text} /></button>}
           <div style={{ flex: 1 }} />
           {trailing}
         </div>
@@ -602,7 +592,7 @@ export function ScreenHeader({ back, onBack, title, trailing, large = false }: {
   }
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 8px", minHeight: 52 }}>
-      {back && <button onClick={onBack} style={iconBtn}><I.ChevL size={20} color={TOK.text} /></button>}
+      {back && <button onClick={onBack} style={iconBtn} aria-label="Zurück"><I.ChevL size={20} color={TOK.text} /></button>}
       <div style={{ flex: 1, ...TYPE.cardTitle, color: TOK.text, padding: back ? "0 4px" : "0 12px" }}>{title}</div>
       {trailing}
     </div>

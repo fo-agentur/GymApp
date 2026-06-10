@@ -1,20 +1,28 @@
 "use client";
+// Workout — the live training session (full-screen overlay). Logs sets to the
+// DB as you tick them off, runs the rest timer, computes PRs on finish.
+// Important behaviours:
+// - Tapping a ✓ on a done set UN-checks it (deletes the logged row) instead of
+//   logging a duplicate.
+// - "Tauschen" replaces the current exercise in place; if it already has logged
+//   sets it stays and the new exercise is inserted after it (nothing is lost).
+// - "Info" opens a sheet — it never navigates away (which would kill the session).
 import React from "react";
 import { useApp } from "../app-context";
 import {
   startSession,
   logSet,
+  deleteSet,
   finishSession,
   discardSession,
   fetchRoutine,
-  fetchProgramWorkoutExercises,
   fetchLastPerformance,
   fetchRecentExerciseIds,
   fetchProfile,
 } from "@/lib/data";
 import type { WorkoutSession, Exercise } from "@/lib/supabase/types";
 import { TOK, Tnum, I, Sheet, fmtW, mmss, epley1rm, rirColor } from "@/lib/design";
-import { loadExerciseDB } from "@/lib/exercise-db";
+import { loadExerciseDB, type ExInfo } from "@/lib/exercise-db";
 import MuscleMap from "../MuscleMap";
 import type { MuscleGroup } from "@/lib/muscles";
 import ExercisePicker from "./ExercisePicker";
@@ -55,7 +63,7 @@ const uid = () => `l${++counter}`;
 type Focus = { setId: string; field: "weight" | "reps" | "rir" } | null;
 
 export default function Workout() {
-  const { db, userId, accent, exMap, exercises, workoutConfig, goto } = useApp();
+  const { db, userId, accent, exMap, exercises, workoutConfig, endWorkout, myEquipment } = useApp();
   const [session, setSession] = React.useState<WorkoutSession | null>(null);
   const [exs, setExs] = React.useState<WEx[]>([]);
   const [currentKey, setCurrentKey] = React.useState<string | null>(null);
@@ -63,6 +71,7 @@ export default function Workout() {
   const [focus, setFocus] = React.useState<Focus>(null);
   const [buffer, setBuffer] = React.useState("");
   const [platesOpen, setPlatesOpen] = React.useState(false);
+  const [infoOpen, setInfoOpen] = React.useState(false);
   const [pickerMode, setPickerMode] = React.useState<"add" | "swap" | null>(null);
   const [finishing, setFinishing] = React.useState(false);
   const [ready, setReady] = React.useState(false);
@@ -75,6 +84,7 @@ export default function Workout() {
   } | null>(null);
   const [exitPrompt, setExitPrompt] = React.useState(false);
   const [barWeight, setBarWeight] = React.useState(20);
+  const defaultRestRef = React.useRef(120);
   const startedRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -83,7 +93,10 @@ export default function Workout() {
 
   React.useEffect(() => {
     fetchProfile(db, userId)
-      .then((p) => setBarWeight(p?.bar_weight_kg ?? 20))
+      .then((p) => {
+        setBarWeight(p?.bar_weight_kg ?? 20);
+        defaultRestRef.current = p?.default_rest_seconds ?? 120;
+      })
       .catch(() => {});
   }, [db, userId]);
 
@@ -94,25 +107,17 @@ export default function Workout() {
     (async () => {
       const s = await startSession(db, userId, {
         routineId: workoutConfig?.routineId ?? null,
-        programWorkoutId: workoutConfig?.programWorkoutId ?? null,
         name: workoutConfig?.name ?? "Workout",
       });
       setSession(s);
       const built: WEx[] = [];
-      if (workoutConfig?.programWorkoutId) {
-        const pexs = await fetchProgramWorkoutExercises(db, workoutConfig.programWorkoutId);
-        for (const pe of pexs) {
-          const ex = exMap[pe.exercise_id];
-          if (!ex) continue;
-          built.push(await buildEx(ex, pe.target_sets, pe.target_reps_min, pe.target_reps_max, pe.target_rir, pe.rest_seconds ?? 120));
-        }
-      } else if (workoutConfig?.routineId) {
+      if (workoutConfig?.routineId) {
         const routine = await fetchRoutine(db, workoutConfig.routineId);
         if (routine) {
           for (const re of routine.routine_exercises) {
             const ex = exMap[re.exercise_id];
             if (!ex) continue;
-            built.push(await buildEx(ex, re.target_sets, re.target_reps_min, re.target_reps_max, re.target_rir, re.rest_seconds ?? 120));
+            built.push(await buildEx(ex, re.target_sets, re.target_reps_min, re.target_reps_max, re.target_rir, re.rest_seconds ?? defaultRestRef.current));
           }
         }
       }
@@ -123,7 +128,7 @@ export default function Workout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, repsMax: number | null = null, targetRir: number | null = 2, rest = 120): Promise<WEx> {
+  async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, repsMax: number | null = null, targetRir: number | null = 2, rest?: number): Promise<WEx> {
     const loMin = repsMin ?? 8;
     const loMax = repsMax ?? (repsMin ? repsMin + 4 : 12);
     const rirTarget = targetRir ?? 2;
@@ -137,6 +142,8 @@ export default function Workout() {
         const lastReps = perf.best_reps ?? loMin;
         const lastRir = perf.best_rpe != null ? 10 - perf.best_rpe : 2;
         const canLoad = ex.category !== "bodyweight";
+        // Double progression: top of the rep range at target RIR → add weight,
+        // otherwise add a rep.
         if (lastReps >= loMax && lastRir >= rirTarget) {
           suggestion = { weight: perf.best_weight + (canLoad ? 2.5 : 0), reps: loMin, rir: rirTarget };
         } else {
@@ -154,8 +161,8 @@ export default function Workout() {
     } catch {
       /* no image */
     }
-    // Pre-fill every planned set with the coach suggestion so the table reads
-    // like a prescription you tick off (MacroFactor "Auto" behaviour).
+    // Pre-fill every planned set with the suggestion so the table reads like a
+    // prescription you tick off.
     const sets: WSet[] = Array.from({ length: Math.max(1, targetSets) }, () => ({
       localId: uid(),
       weight: suggestion.weight,
@@ -166,7 +173,7 @@ export default function Workout() {
       warmup: false,
       status: "planned" as const,
     }));
-    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, image, last, targetReps: loMin === loMax ? `${loMin}` : `${loMin}–${loMax}`, priorBest1rm, rest, suggestion, sets };
+    return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, image, last, targetReps: loMin === loMax ? `${loMin}` : `${loMin}–${loMax}`, priorBest1rm, rest: rest ?? defaultRestRef.current, suggestion, sets };
   }
 
   React.useEffect(() => {
@@ -199,7 +206,6 @@ export default function Workout() {
   const isLast = curIdx === exs.length - 1;
 
   const doneSets = exs.reduce((n, e) => n + e.sets.filter((s) => s.status === "done" && !s.warmup).length, 0);
-  const totalPlanned = exs.reduce((n, e) => n + e.sets.length, 0);
   const volume = exs.reduce(
     (n, e) => n + e.sets.filter((s) => s.status === "done" && !s.warmup).reduce((m, s) => m + (s.weight ?? 0) * (s.reps ?? 0), 0),
     0
@@ -223,7 +229,7 @@ export default function Workout() {
 
   function typeDigit(d: string) {
     if (!focus) return;
-    let next = buffer + d;
+    const next = buffer + d;
     if (focus.field !== "weight" && d === ".") return;
     if (d === "." && buffer.includes(".")) return;
     if (next.length > 6) return;
@@ -245,12 +251,26 @@ export default function Workout() {
     if (focus?.setId === setId && focus.field === "rir") setBuffer(String(value));
   }
 
-  // Commit (or re-save) a row, then advance to the next planned set.
+  // Tick a row: planned → log it; done → un-check (remove the logged row).
   async function commitRow(setId: string) {
     if (!session || !current) return;
     const ex = current;
     const set = ex.sets.find((s) => s.localId === setId);
     if (!set) return;
+
+    if (set.status === "done") {
+      const dbId = set.dbId;
+      patchSet(setId, { status: "planned", dbId: undefined });
+      if (dbId) {
+        try {
+          await deleteSet(db, dbId);
+        } catch {
+          /* row already gone */
+        }
+      }
+      return;
+    }
+
     const weight = set.weight ?? ex.suggestion.weight;
     const reps = set.reps ?? ex.suggestion.reps;
     const rir = set.rir ?? ex.suggestion.rir;
@@ -272,7 +292,7 @@ export default function Workout() {
       patchSet(setId, { weight, reps, rir, status: "done", dbId: row.id });
       if (!isWarm) setRestTimer({ total: ex.rest, remaining: ex.rest });
     } catch (err) {
-      alert("Could not save set: " + (err as Error).message);
+      alert("Satz konnte nicht gespeichert werden: " + (err as Error).message);
       return;
     }
     // Advance focus to the next not-done set's weight cell.
@@ -284,28 +304,69 @@ export default function Workout() {
   function addSet() {
     if (!current) return;
     const s = current.suggestion;
-    const newId = uid();
     setExs((prev) =>
       prev.map((e) =>
         e.key !== currentKey
           ? e
-          : { ...e, sets: [...e.sets, { localId: newId, weight: s.weight, reps: s.reps, rir: s.rir, partials: null, setType: "normal" as SetType, warmup: false, status: "planned" as const }] }
+          : { ...e, sets: [...e.sets, { localId: uid(), weight: s.weight, reps: s.reps, rir: s.rir, partials: null, setType: "normal" as SetType, warmup: false, status: "planned" as const }] }
       )
     );
+  }
+
+  // Removes the last *planned* set (logged sets stay).
+  function removeSet() {
+    if (!current) return;
+    setExs((prev) =>
+      prev.map((e) => {
+        if (e.key !== currentKey) return e;
+        const idx = [...e.sets].map((s) => s.status).lastIndexOf("planned");
+        if (idx < 0 || e.sets.length <= 1) return e;
+        const sets = e.sets.filter((_, i) => i !== idx);
+        if (focus && e.sets[idx]?.localId === focus.setId) setFocus(null);
+        return { ...e, sets };
+      })
+    );
+  }
+
+  function removeExercise(key: string) {
+    setExs((prev) => {
+      const target = prev.find((e) => e.key === key);
+      if (!target) return prev;
+      if (target.sets.some((s) => s.status === "done")) {
+        alert("Diese Übung hat bereits protokollierte Sätze. Hake sie zuerst ab (✓ erneut tippen), um sie zu entfernen.");
+        return prev;
+      }
+      const next = prev.filter((e) => e.key !== key);
+      if (currentKey === key) setCurrentKey(next[0]?.key ?? null);
+      return next;
+    });
+    setFocus(null);
   }
 
   function onPick(ex: Exercise) {
     const mode = pickerMode;
     setPickerMode(null);
     (async () => {
-      const wex = await buildEx(ex, 3, 8, 8);
-      if (mode === "swap" && currentKey) {
-        setExs((prev) => prev.map((e) => (e.key === currentKey ? wex : e)));
-        setCurrentKey(wex.key);
-      } else {
-        setExs((prev) => [...prev, wex]);
-        setCurrentKey((k) => k ?? wex.key);
-      }
+      const wex = await buildEx(ex, 3, 8, 12);
+      setExs((prev) => {
+        if (mode === "swap" && currentKey) {
+          const idx = prev.findIndex((e) => e.key === currentKey);
+          if (idx >= 0) {
+            const old = prev[idx];
+            const hasDone = old.sets.some((s) => s.status === "done");
+            const next = [...prev];
+            if (hasDone) {
+              // Logged sets stay visible; the replacement slots in right after.
+              next.splice(idx + 1, 0, wex);
+            } else {
+              next[idx] = wex;
+            }
+            return next;
+          }
+        }
+        return [...prev, wex];
+      });
+      setCurrentKey(wex.key);
       setFocus(null);
     })();
   }
@@ -325,7 +386,7 @@ export default function Workout() {
     setFinishing(true);
     if (doneSets === 0) {
       await discardSession(db, session.id);
-      goto("today");
+      endWorkout("today");
       return;
     }
     await finishSession(db, session.id, {
@@ -339,7 +400,7 @@ export default function Workout() {
     for (const e of exs) {
       const doneSetsEx = e.sets.filter((s) => s.status === "done" && !s.warmup);
       const muscle = (exMap[e.exerciseId]?.primary_muscle ?? e.muscle) as MuscleGroup;
-      if (muscle) muscleSets[muscle] = (muscleSets[muscle] ?? 0) + doneSetsEx.length;
+      if (muscle && doneSetsEx.length) muscleSets[muscle] = (muscleSets[muscle] ?? 0) + doneSetsEx.length;
       const sessionBest1rm = Math.max(0, ...doneSetsEx.map((s) => epley1rm(s.weight ?? 0, s.reps ?? 0)));
       const top = Math.max(0, ...doneSetsEx.map((s) => s.weight ?? 0));
       if (sessionBest1rm > e.priorBest1rm && e.priorBest1rm > 0) prs.push({ name: e.name, weight: top });
@@ -356,32 +417,33 @@ export default function Workout() {
   }
 
   async function exitWorkout() {
-    if (!session) return goto("today");
+    if (!session) return endWorkout("today");
     if (doneSets === 0) {
       await discardSession(db, session.id);
-      return goto("today");
+      return endWorkout("today");
     }
     setExitPrompt(true);
   }
   async function exitSave() {
-    if (!session) return goto("today");
+    if (!session) return endWorkout("today");
     await finishSession(db, session.id, { total_volume_kg: Math.round(volume * 100) / 100, total_sets: doneSets, duration_seconds: elapsed, notes: null });
-    goto("today");
+    endWorkout("history");
   }
   async function exitDiscard() {
-    if (!session) return goto("today");
+    if (!session) return endWorkout("today");
     await discardSession(db, session.id);
-    goto("today");
+    endWorkout("today");
   }
 
   const setPos = current ? current.sets.findIndex((s) => s.status !== "done") : -1;
   const activeSetNo = setPos < 0 ? (current?.sets.length ?? 0) : setPos + 1;
+  const plannedLeft = current ? current.sets.filter((s) => s.status === "planned").length : 0;
 
   return (
     <>
       <PhoneStatus />
       <div className="phone-scroll-area" style={{ position: "absolute", inset: "47px 0 0 0", display: "flex", flexDirection: "column", background: TOK.bg }}>
-        {/* Top bar: menu · elapsed · rest */}
+        {/* Top bar: exit · elapsed · rest */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px 6px 10px" }}>
           <button onClick={exitWorkout} style={{ ...iconBtn }} aria-label="Beenden">
             <I.ChevL size={22} color={TOK.text} />
@@ -422,14 +484,22 @@ export default function Workout() {
             </div>
 
             {/* Title */}
-            <div style={{ padding: "2px 16px 10px" }}>
-              <div style={{ fontSize: 21, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em", lineHeight: 1.15 }}>{current.name}</div>
-              <div style={{ fontSize: 13, color: TOK.muted, marginTop: 2 }}>Satz {Math.min(activeSetNo, current.sets.length)} von {current.sets.length}</div>
+            <div style={{ padding: "2px 16px 10px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 21, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em", lineHeight: 1.15 }}>{current.name}</div>
+                <div style={{ fontSize: 13, color: TOK.muted, marginTop: 2 }}>
+                  Satz {Math.min(activeSetNo, current.sets.length)} von {current.sets.length}
+                  {current.last ? ` · Letztes Mal ${current.last}` : ""}
+                </div>
+              </div>
+              <button onClick={() => removeExercise(current.key)} style={{ ...iconBtn, width: 32, height: 32 }} aria-label="Übung entfernen" title="Übung entfernen">
+                <I.Trash size={17} color={TOK.dim} />
+              </button>
             </div>
 
             {/* Action chips */}
             <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 14px 12px", flexShrink: 0 }}>
-              <ActionChip icon={<I.Note size={15} color={TOK.text} />} label="Info" onTap={() => goto("exercise-detail", current.exerciseId)} />
+              <ActionChip icon={<I.Note size={15} color={TOK.text} />} label="Info" onTap={() => setInfoOpen(true)} />
               <ActionChip icon={<I.Flame size={15} color={warmActive(current) ? "#fff" : TOK.text} />} label="Aufwärmen" active={warmActive(current)} onTap={() => toggleWarmup()} />
               <ActionChip icon={<I.Routine size={15} color={TOK.text} />} label="Tauschen" onTap={() => setPickerMode("swap")} />
               <ActionChip icon={<I.Grid size={15} color={TOK.text} />} label="Scheiben" onTap={() => setPlatesOpen(true)} />
@@ -457,9 +527,16 @@ export default function Workout() {
                   onCheck={() => commitRow(s.localId)}
                 />
               ))}
-              <button onClick={addSet} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", height: 44, marginTop: 4, background: "transparent", border: "none", color: TOK.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                <I.Plus size={14} color={TOK.muted} w={2} /> Satz hinzufügen
-              </button>
+              <div style={{ display: "flex" }}>
+                <button onClick={addSet} style={setEditBtn}>
+                  <I.Plus size={14} color={TOK.muted} w={2} /> Satz hinzufügen
+                </button>
+                {plannedLeft > 0 && current.sets.length > 1 && (
+                  <button onClick={removeSet} style={setEditBtn}>
+                    <I.Minus size={14} color={TOK.muted} w={2} /> Satz entfernen
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Rest timer (floats above the keypad / action bar) */}
@@ -500,9 +577,12 @@ export default function Workout() {
         {/* Plate calculator */}
         <PlatesSheet open={platesOpen} onClose={() => setPlatesOpen(false)} weight={current?.sets.find((s) => s.status !== "done")?.weight ?? current?.suggestion.weight ?? 100} barWeight={barWeight} accentHex={accent.hex} />
 
+        {/* Exercise info (in a sheet — navigating away would kill the session) */}
+        <InfoSheet open={infoOpen} onClose={() => setInfoOpen(false)} name={current?.name ?? null} />
+
         {/* Exercise picker (add / swap) */}
-        <Sheet open={pickerMode !== null} onClose={() => setPickerMode(null)} label={pickerMode === "swap" ? "Übung tauschen" : "Übung hinzufügen"} title="">
-          <ExercisePicker exercises={exercises} accent={accent} onPick={onPick} recentIds={recentIds} />
+        <Sheet open={pickerMode !== null} onClose={() => setPickerMode(null)} label={pickerMode === "swap" ? "Übung tauschen" : "Übung hinzufügen"} title={pickerMode === "swap" && current ? `Ersetzt: ${current.name}` : ""}>
+          <ExercisePicker exercises={exercises} accent={accent} onPick={onPick} recentIds={recentIds} myEquipment={myEquipment} />
         </Sheet>
 
         {/* Exit prompt */}
@@ -516,7 +596,7 @@ export default function Workout() {
           </div>
         </Sheet>
 
-        {completed && <WorkoutComplete data={completed} accentHex={accent.hex} onClose={() => goto("history")} />}
+        {completed && <WorkoutComplete data={completed} accentHex={accent.hex} onClose={() => endWorkout("history")} />}
       </div>
       <div className="home-indicator" />
     </>
@@ -533,6 +613,43 @@ export default function Workout() {
 function warmActive(ex: WEx) {
   const t = ex.sets.find((s) => s.status !== "done") ?? ex.sets[0];
   return t?.setType === "warmup";
+}
+
+// ── Exercise info sheet ─────────────────────────────────────────
+function InfoSheet({ open, onClose, name }: { open: boolean; onClose: () => void; name: string | null }) {
+  const [info, setInfo] = React.useState<ExInfo | null>(null);
+  const [imgOk, setImgOk] = React.useState(true);
+  React.useEffect(() => {
+    if (!open || !name) return;
+    setImgOk(true);
+    loadExerciseDB().then((dbx) => setInfo(dbx[name] ?? null)).catch(() => setInfo(null));
+  }, [open, name]);
+  return (
+    <Sheet open={open} onClose={onClose} label="Anleitung" title={name ?? ""}>
+      <div style={{ padding: "4px 20px 20px" }}>
+        {info?.image && imgOk && (
+          <div style={{ marginBottom: 14, borderRadius: 14, overflow: "hidden", background: "#fff", border: `1px solid ${TOK.border}` }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={info.image} alt="" onError={() => setImgOk(false)} style={{ width: "100%", height: 170, objectFit: "cover", display: "block" }} />
+          </div>
+        )}
+        {info?.steps?.length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {info.steps.map((s, i) => (
+              <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <div style={{ width: 22, height: 22, borderRadius: 999, background: TOK.surface3, color: TOK.text, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{i + 1}</div>
+                <div style={{ fontSize: 13, color: TOK.text, lineHeight: 1.5 }}>{s}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: TOK.muted, fontSize: 13, lineHeight: 1.6 }}>
+            Keine Anleitung hinterlegt. Kontrolliertes Tempo und volle Bewegungsamplitude.
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
 }
 
 // ── Exercise thumbnail ──────────────────────────────────────────
@@ -570,6 +687,7 @@ function ActionChip({ icon, label, active, onTap }: { icon: React.ReactNode; lab
 // ── Set table row ───────────────────────────────────────────────
 const TABLE_GRID = "30px 1fr 62px 54px 34px";
 const colHead: React.CSSProperties = { fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: TOK.dim };
+const setEditBtn: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flex: 1, height: 44, marginTop: 4, background: "transparent", border: "none", color: TOK.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
 function SetTableRow({ no, set, target, focus, accentInk, accentHex, onFocusCell, onCheck }: {
   no: number; set: WSet; target: string; focus: Focus; accentInk: string; accentHex: string;
@@ -591,7 +709,7 @@ function SetTableRow({ no, set, target, focus, accentInk, accentHex, onFocusCell
       </span>
       <Cell value={set.weight} focused={isW} done={done} onTap={() => onFocusCell("weight")} />
       <Cell value={set.reps} focused={isR} done={done} onTap={() => onFocusCell("reps")} />
-      <button onClick={onCheck} aria-label="Satz abhaken" style={{ justifySelf: "center", width: 26, height: 26, borderRadius: 8, background: done ? accentHex : "transparent", border: done ? "none" : `1.5px solid ${TOK.border}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", WebkitTapHighlightColor: "transparent" }}>
+      <button onClick={onCheck} aria-label={done ? "Satz zurücknehmen" : "Satz abhaken"} style={{ justifySelf: "center", width: 26, height: 26, borderRadius: 8, background: done ? accentHex : "transparent", border: done ? "none" : `1.5px solid ${TOK.border}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", WebkitTapHighlightColor: "transparent" }}>
         {done && <I.Check size={15} color={accentInk} />}
       </button>
     </div>
@@ -652,8 +770,8 @@ function Keypad({ field, rir, accentHex, accentInk, onDigit, onBackspace, onRir,
         <button style={key} onClick={() => onDigit("8")}>8</button>
         <button style={key} onClick={() => onDigit("9")}>9</button>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-          <button style={{ ...sideKey, background: TOK.text, color: "var(--c-bg)" }} onClick={onFailure}>F</button>
-          <button style={sideKey} onClick={onPartial}>P</button>
+          <button style={{ ...sideKey, background: TOK.text, color: "var(--c-bg)" }} onClick={onFailure} title="Bis Muskelversagen">F</button>
+          <button style={sideKey} onClick={onPartial} title="Teilwiederholungen">P</button>
         </div>
 
         <button style={key} onClick={() => onDigit(".")}>.</button>

@@ -1,10 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type {
-  Database, Exercise, Food, FoodLog, NutritionProgram, Routine, WeightLog, WorkoutSession,
-  Program, ProgramWeek, ProgramWorkout, ProgramExercise, UserProgram,
-} from "./supabase/types";
+import type { Database, Exercise, Routine, WorkoutSession } from "./supabase/types";
 import type { MuscleGroup } from "./muscles";
-import type { ProgramSpec } from "./program-gen";
 
 // Browser/server clients from @supabase/ssr resolve their Schema generic
 // concretely; keep this alias permissive on that 3rd generic so both are assignable.
@@ -28,7 +24,7 @@ export type NewRoutineEx = {
   target_sets: number;
   target_reps_min: number | null;
   target_reps_max: number | null;
-  target_rpe: number | null;
+  target_rir: number | null;
   rest_seconds: number | null;
 };
 
@@ -50,6 +46,7 @@ export async function fetchExercises(db: DB): Promise<Exercise[]> {
 }
 
 // Distinct exercise IDs the user has logged recently (most recent first).
+// RLS restricts `sets` to the signed-in user's rows.
 export async function fetchRecentExerciseIds(db: DB, limit = 8): Promise<string[]> {
   const { data, error } = await db
     .from("sets")
@@ -135,7 +132,8 @@ export async function updateRoutine(db: DB, id: string, name: string, exercises:
 }
 
 async function replaceRoutineExercises(db: DB, routineId: string, exercises: NewRoutineEx[]) {
-  await db.from("routine_exercises").delete().eq("routine_id", routineId);
+  const { error: delErr } = await db.from("routine_exercises").delete().eq("routine_id", routineId);
+  if (delErr) throw delErr;
   if (!exercises.length) return;
   const rows = exercises.map((ex, i) => ({
     routine_id: routineId,
@@ -144,7 +142,7 @@ async function replaceRoutineExercises(db: DB, routineId: string, exercises: New
     target_sets: ex.target_sets,
     target_reps_min: ex.target_reps_min,
     target_reps_max: ex.target_reps_max,
-    target_rpe: ex.target_rpe,
+    target_rir: ex.target_rir,
     rest_seconds: ex.rest_seconds,
   }));
   const { error } = await db.from("routine_exercises").insert(rows);
@@ -160,31 +158,19 @@ export async function deleteRoutine(db: DB, id: string) {
 export async function startSession(
   db: DB,
   userId: string,
-  opts: { routineId?: string | null; name?: string | null; programWorkoutId?: string | null }
+  opts: { routineId?: string | null; name?: string | null }
 ): Promise<WorkoutSession> {
   const { data, error } = await db
     .from("workout_sessions")
     .insert({
       user_id: userId,
       routine_id: opts.routineId ?? null,
-      program_workout_id: opts.programWorkoutId ?? null,
       name: opts.name ?? null,
     })
     .select()
     .single();
   if (error) throw error;
   return data;
-}
-
-// Program-workout exercises (target prescription for an active workout).
-export async function fetchProgramWorkoutExercises(db: DB, programWorkoutId: string): Promise<ProgramExercise[]> {
-  const { data, error } = await db
-    .from("program_exercises")
-    .select("*")
-    .eq("program_workout_id", programWorkoutId)
-    .order("position", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
 }
 
 export async function logSet(
@@ -238,6 +224,7 @@ export async function finishSession(
   if (error) throw error;
 }
 
+// Deletes the session row (sets cascade). Used for abandoned and unwanted sessions.
 export async function discardSession(db: DB, sessionId: string) {
   const { error } = await db.from("workout_sessions").delete().eq("id", sessionId);
   if (error) throw error;
@@ -302,394 +289,22 @@ export async function fetchStats(db: DB): Promise<Stats> {
 }
 
 // ── Weekly muscle volume (working-set count per primary muscle, last 7 days) ──
-// Shared by Progress (full body map) and Today (Cockpit heatmap snapshot).
+// Shared by Progress (full body map) and Today (dashboard snapshot).
 export async function weeklyMuscleSets(
   db: DB,
   exMap: Record<string, Exercise>
 ): Promise<Partial<Record<MuscleGroup, number>>> {
-  const weekStart = Date.now() - 7 * 24 * 3600 * 1000;
-  const { data, error } = await db.from("sets").select("is_warmup,exercise_id,completed_at");
+  const weekStart = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await db
+    .from("sets")
+    .select("is_warmup,exercise_id,completed_at")
+    .gte("completed_at", weekStart);
   if (error) throw error;
   const agg: Record<string, number> = {};
   for (const s of data ?? []) {
     if (s.is_warmup) continue;
-    if (s.completed_at && new Date(s.completed_at).getTime() >= weekStart) {
-      const muscle = exMap[s.exercise_id]?.primary_muscle ?? "Other";
-      agg[muscle] = (agg[muscle] ?? 0) + 1;
-    }
+    const muscle = exMap[s.exercise_id]?.primary_muscle ?? "Other";
+    agg[muscle] = (agg[muscle] ?? 0) + 1;
   }
   return agg as Partial<Record<MuscleGroup, number>>;
-}
-
-// ── Nutrition: food_logs (per user/day) ─────────────────────────
-export type NewFoodLog = {
-  name: string;
-  meal: string;
-  food_id?: string | null;
-  qty_g?: number | null;
-  kcal: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  source: string;
-  photo_path?: string | null;
-};
-
-export async function fetchFoodLogs(db: DB, loggedOn: string): Promise<FoodLog[]> {
-  const { data, error } = await db
-    .from("food_logs")
-    .select("*")
-    .eq("logged_on", loggedOn)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function addFoodLog(db: DB, userId: string, loggedOn: string, e: NewFoodLog): Promise<FoodLog> {
-  const { data, error } = await db
-    .from("food_logs")
-    .insert({
-      user_id: userId,
-      logged_on: loggedOn,
-      meal: (e.meal || "other").toLowerCase(),
-      food_id: e.food_id ?? null,
-      name: e.name,
-      qty_g: e.qty_g ?? null,
-      kcal: e.kcal,
-      protein_g: e.protein_g,
-      carbs_g: e.carbs_g,
-      fat_g: e.fat_g,
-      source: e.source,
-      photo_path: e.photo_path ?? null,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as FoodLog;
-}
-
-export async function deleteFoodLog(db: DB, id: string) {
-  const { error } = await db.from("food_logs").delete().eq("id", id);
-  if (error) throw error;
-}
-
-// Search the shared foods cache (foods other users already looked up).
-export async function searchFoodsCache(db: DB, query: string, limit = 15): Promise<Food[]> {
-  const q = query.trim();
-  if (!q) return [];
-  const { data, error } = await db.from("foods").select("*").ilike("name", `%${q}%`).limit(limit);
-  if (error) throw error;
-  return data ?? [];
-}
-
-// Best-effort insert into the shared foods cache; returns the new id or null.
-export async function cacheFood(
-  db: DB,
-  f: { source: string; barcode?: string | null; name: string; brand?: string | null; serving_g?: number | null; kcal: number; protein_g: number; carbs_g: number; fat_g: number }
-): Promise<string | null> {
-  const { data, error } = await db
-    .from("foods")
-    .insert({
-      source: f.source,
-      barcode: f.barcode ?? null,
-      name: f.name,
-      brand: f.brand ?? null,
-      serving_g: f.serving_g ?? null,
-      kcal: f.kcal,
-      protein_g: f.protein_g,
-      carbs_g: f.carbs_g,
-      fat_g: f.fat_g,
-    })
-    .select("id")
-    .single();
-  if (error) return null;
-  return data?.id ?? null;
-}
-
-// ── Open Food Facts (live search + barcode). Macros are per 100g. ──
-export type OffFood = {
-  name: string;
-  brand: string | null;
-  barcode: string | null;
-  serving_g: number | null;
-  kcal: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-};
-
-function offNum(v: unknown): number {
-  const x = typeof v === "number" ? v : parseFloat(String(v));
-  return isFinite(x) ? x : 0;
-}
-
-function normalizeOff(p: any): OffFood | null {
-  if (!p) return null;
-  const name = (p.product_name_de || p.product_name || p.generic_name || "").toString().trim();
-  if (!name) return null;
-  const n = p.nutriments ?? {};
-  return {
-    name: name.slice(0, 80),
-    brand: (p.brands ? String(p.brands).split(",")[0].trim() : null) || null,
-    barcode: p.code ? String(p.code) : null,
-    // Only trust serving_quantity when it's in grams (OFF also stores mL etc.).
-    serving_g:
-      p.serving_quantity && (!p.serving_quantity_unit || String(p.serving_quantity_unit).toLowerCase() === "g")
-        ? offNum(p.serving_quantity)
-        : null,
-    kcal: Math.round(offNum(n["energy-kcal_100g"])),
-    protein_g: Math.round(offNum(n.proteins_100g)),
-    carbs_g: Math.round(offNum(n.carbohydrates_100g)),
-    fat_g: Math.round(offNum(n.fat_100g)),
-  };
-}
-
-const OFF_FIELDS = "product_name,product_name_de,generic_name,brands,code,serving_quantity,serving_quantity_unit,nutriments";
-
-export async function offSearch(query: string, limit = 20): Promise<OffFood[]> {
-  const q = query.trim();
-  if (!q) return [];
-  const url =
-    `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}` +
-    `&search_simple=1&action=process&json=1&page_size=${limit}&fields=${OFF_FIELDS}`;
-  try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return ((data.products ?? []) as any[])
-      .map(normalizeOff)
-      .filter((f): f is OffFood => !!f && f.kcal > 0);
-  } catch {
-    return [];
-  }
-}
-
-export async function offByBarcode(barcode: string): Promise<OffFood | null> {
-  const code = barcode.trim();
-  if (!code) return null;
-  const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}?fields=${OFF_FIELDS}`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.product) return null;
-    return normalizeOff(data.product);
-  } catch {
-    return null;
-  }
-}
-
-// ── AI photo -> macros (via the analyze-meal edge function) ──
-export type MealEstimate = { name: string; serving_g: number; kcal: number; protein_g: number; carbs_g: number; fat_g: number };
-export async function analyzeMealPhoto(
-  db: DB,
-  imageDataUrl: string,
-  hint?: string
-): Promise<{ ok: true; data: MealEstimate } | { ok: false; error: string }> {
-  const { data, error } = await db.functions.invoke("analyze-meal", { body: { image: imageDataUrl, hint } });
-  if (error) {
-    // supabase-js surfaces non-2xx as a FunctionsHttpError; the helpful body
-    // message (e.g. "OPENROUTER_API_KEY secret is not set") lives in .context.
-    let msg = error.message ?? "Request failed";
-    try {
-      const ctx = (error as any).context;
-      const body = ctx && typeof ctx.json === "function" ? await ctx.json() : null;
-      if (body?.error) msg = body.error;
-    } catch {
-      /* keep generic message */
-    }
-    return { ok: false, error: msg };
-  }
-  if (!data || (data as any).error) return { ok: false, error: (data as any)?.error ?? "No result" };
-  return { ok: true, data: data as MealEstimate };
-}
-
-// ── Dashboard: week macros (sum per day) for the bar-grid ──
-export type DayMacros = { date: string; kcal: number; protein: number; carbs: number; fat: number };
-export async function fetchWeekMacros(db: DB, dates: string[]): Promise<Record<string, DayMacros>> {
-  const out: Record<string, DayMacros> = {};
-  for (const d of dates) out[d] = { date: d, kcal: 0, protein: 0, carbs: 0, fat: 0 };
-  if (!dates.length) return out;
-  const { data, error } = await db
-    .from("food_logs")
-    .select("logged_on,kcal,protein_g,carbs_g,fat_g")
-    .gte("logged_on", dates[0])
-    .lte("logged_on", dates[dates.length - 1]);
-  if (error) throw error;
-  for (const r of data ?? []) {
-    const o = out[r.logged_on as string];
-    if (!o) continue;
-    o.kcal += r.kcal ?? 0;
-    o.protein += r.protein_g ?? 0;
-    o.carbs += r.carbs_g ?? 0;
-    o.fat += r.fat_g ?? 0;
-  }
-  return out;
-}
-
-// ── Weight logs + True-Weight inputs ──
-export async function fetchWeightLogs(db: DB, sinceDays = 120): Promise<WeightLog[]> {
-  const since = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10);
-  const { data, error } = await db
-    .from("weight_logs")
-    .select("*")
-    .gte("logged_on", since)
-    .order("logged_on", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function logWeight(db: DB, userId: string, loggedOn: string, weightKg: number, bodyFatPct?: number | null) {
-  const { error } = await db
-    .from("weight_logs")
-    .upsert({ user_id: userId, logged_on: loggedOn, weight_kg: weightKg, body_fat_pct: bodyFatPct ?? null }, { onConflict: "user_id,logged_on" });
-  if (error) throw error;
-}
-
-// ── Adaptive nutrition program (the coach's current plan) ──
-export async function fetchActiveProgram(db: DB): Promise<NutritionProgram | null> {
-  const { data, error } = await db.from("nutrition_programs").select("*").eq("active", true).maybeSingle();
-  if (error) throw error;
-  return data ?? null;
-}
-
-export async function saveProgram(
-  db: DB,
-  userId: string,
-  p: Partial<Database["public"]["Tables"]["nutrition_programs"]["Insert"]> & { id?: string }
-): Promise<NutritionProgram> {
-  if (p.id) {
-    const { data, error } = await db
-      .from("nutrition_programs")
-      .update({ ...p, updated_at: new Date().toISOString() })
-      .eq("id", p.id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data as NutritionProgram;
-  }
-  // deactivate any existing active program, then insert the new active one
-  await db.from("nutrition_programs").update({ active: false }).eq("user_id", userId).eq("active", true);
-  const { data, error } = await db
-    .from("nutrition_programs")
-    .insert({ ...p, user_id: userId, active: true })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as NutritionProgram;
-}
-
-// ── Onboarding ──────────────────────────────────────────────────
-export async function completeOnboarding(
-  db: DB,
-  userId: string,
-  patch: Partial<Database["public"]["Tables"]["profiles"]["Update"]>,
-) {
-  const { error } = await db.from("profiles").update({ ...patch, onboarding_completed: true }).eq("id", userId);
-  if (error) throw error;
-}
-
-// ── Workout programs (generated or custom) ──────────────────────
-// Convention: the recurring microcycle lives as program_workouts with
-// week_number = 1; program_weeks describes each week's character (deload /
-// volume multiplier). user_programs.current_week tracks where the user is.
-export type ProgramWorkoutFull = ProgramWorkout & { program_exercises: ProgramExercise[] };
-export type ProgramFull = Program & { program_weeks: ProgramWeek[]; program_workouts: ProgramWorkoutFull[] };
-export type ActiveProgram = { userProgram: UserProgram; program: Program };
-
-export async function createWorkoutProgram(db: DB, userId: string, spec: ProgramSpec): Promise<string> {
-  const { data: prog, error } = await db
-    .from("programs")
-    .insert({
-      user_id: userId, name: spec.name, goal: spec.goal, difficulty: spec.difficulty,
-      days_per_week: spec.days_per_week, duration_weeks: spec.duration_weeks,
-      description: spec.description, is_template: false, archived: false,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  const programId = prog.id;
-
-  if (spec.weeks.length) {
-    const { error: we } = await db.from("program_weeks").insert(
-      spec.weeks.map((w) => ({ program_id: programId, week_number: w.week_number, is_deload: w.is_deload, volume_multiplier: w.volume_multiplier })),
-    );
-    if (we) throw we;
-  }
-
-  const { data: wos, error: woe } = await db
-    .from("program_workouts")
-    .insert(spec.workouts.map((w) => ({ program_id: programId, week_number: 1, day_of_week: w.day_of_week, name: w.name, position: w.position })))
-    .select();
-  if (woe) throw woe;
-  const byPos: Record<number, string> = {};
-  for (const w of wos ?? []) byPos[w.position] = w.id;
-
-  const exRows = spec.workouts.flatMap((w) => {
-    const woId = byPos[w.position];
-    return woId
-      ? w.exercises.map((e) => ({
-          program_workout_id: woId, exercise_id: e.exercise_id, position: e.position,
-          target_sets: e.target_sets, target_reps_min: e.target_reps_min, target_reps_max: e.target_reps_max,
-          target_rir: e.target_rir, target_rpe: null, rest_seconds: e.rest_seconds,
-          superset_group: e.superset_group, notes: e.notes,
-        }))
-      : [];
-  });
-  if (exRows.length) {
-    const { error: ee } = await db.from("program_exercises").insert(exRows);
-    if (ee) throw ee;
-  }
-
-  await setActiveProgram(db, userId, programId);
-  return programId;
-}
-
-export async function setActiveProgram(db: DB, userId: string, programId: string) {
-  await db.from("user_programs").update({ is_active: false }).eq("user_id", userId).eq("is_active", true);
-  // One row per (user, program): reactivate if it exists, else insert.
-  const { data: existing } = await db
-    .from("user_programs")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("program_id", programId)
-    .maybeSingle();
-  if (existing) {
-    const { error } = await db.from("user_programs").update({ is_active: true }).eq("id", existing.id);
-    if (error) throw error;
-  } else {
-    const { error } = await db.from("user_programs").insert({ user_id: userId, program_id: programId, is_active: true, current_week: 1 });
-    if (error) throw error;
-  }
-}
-
-export async function fetchActiveWorkoutProgram(db: DB, userId: string): Promise<ActiveProgram | null> {
-  const { data, error } = await db
-    .from("user_programs")
-    .select("*, programs(*)")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
-  const { programs, ...up } = data as unknown as UserProgram & { programs: Program };
-  if (!programs) return null;
-  return { userProgram: up as UserProgram, program: programs };
-}
-
-export async function fetchWorkoutProgramFull(db: DB, programId: string): Promise<ProgramFull | null> {
-  const { data, error } = await db
-    .from("programs")
-    .select("*, program_weeks(*), program_workouts(*, program_exercises(*))")
-    .eq("id", programId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
-  const p = data as unknown as ProgramFull;
-  p.program_workouts = (p.program_workouts ?? [])
-    .filter((w) => w.week_number === 1)
-    .sort((a, b) => a.position - b.position);
-  p.program_workouts.forEach((w) => w.program_exercises.sort((a, b) => a.position - b.position));
-  (p.program_weeks ?? []).sort((a, b) => a.week_number - b.week_number);
-  return p;
 }

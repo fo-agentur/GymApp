@@ -1,6 +1,6 @@
 {
-  "name": "macrofactor-workouts",
-  "version": "1.0.0",
+  "name": "gymapp-workouts",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,7 +11,6 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
-    "@zxing/browser": "^0.2.0",
     "next": "^15.1.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

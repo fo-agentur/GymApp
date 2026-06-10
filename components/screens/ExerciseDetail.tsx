@@ -4,6 +4,8 @@ import { useApp } from "../app-context";
 import { TOK, TYPE, Tnum, ScreenHeader, Card, EmptyState, I, fmtW, epley1rm } from "@/lib/design";
 import { guideFor } from "@/lib/exercise-guide";
 import { loadExerciseDB, type ExInfo } from "@/lib/exercise-db";
+import { deMuscle } from "@/lib/muscles";
+import { deCategory } from "@/lib/equipment";
 
 type ExSet = {
   id: string;
@@ -17,7 +19,7 @@ type ExSet = {
 type SessionGroup = { date: string; name: string | null; sets: ExSet[]; e1rm: number; top: ExSet | null };
 
 export default function ExerciseDetail() {
-  const { db, params, exMap, accent, goto } = useApp();
+  const { db, params, exMap, accent, goBack } = useApp();
   const exId = params.exerciseId;
   const ex = exId ? exMap[exId] : undefined;
   const [tab, setTab] = React.useState<"guide" | "history" | "charts">("guide");
@@ -69,29 +71,36 @@ export default function ExerciseDetail() {
     })();
   }, [db, exId]);
 
-  if (!ex) return <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Exercise not found.</div>;
+  if (!ex) {
+    return (
+      <div style={{ flex: 1 }}>
+        <ScreenHeader back onBack={goBack} title="" />
+        <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Übung nicht gefunden.</div>
+      </div>
+    );
+  }
 
   const guide = guideFor(ex.name);
   const chartData = [...groups].reverse().filter((g) => g.e1rm > 0).map((g, i) => ({ x: i, y: g.e1rm }));
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", paddingBottom: 24 }}>
-      <ScreenHeader back onBack={() => goto("library")} title="" />
+    <div style={{ flex: 1, overflowY: "auto", paddingBottom: 96 }}>
+      <ScreenHeader back onBack={goBack} title="" />
       <div style={{ padding: "0 16px 16px" }}>
         <div style={{ ...TYPE.h1, color: TOK.text }}>{ex.name}</div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-          <span style={tag}>{ex.primary_muscle}</span>
+          <span style={tag}>{deMuscle(ex.primary_muscle)}</span>
           {(info?.secondary ?? guide?.secondary ?? []).map((m) => (
-            <span key={m} style={{ ...tag, color: TOK.dim }}>{m}</span>
+            <span key={m} style={{ ...tag, color: TOK.dim }}>{deMuscle(m)}</span>
           ))}
-          <span style={tag}>{ex.category[0].toUpperCase() + ex.category.slice(1)}</span>
+          <span style={tag}>{deCategory(ex.category)}</span>
         </div>
       </div>
 
       <div style={{ display: "flex", borderBottom: `1px solid ${TOK.border}`, padding: "0 16px", gap: 24 }}>
         {(["guide", "history", "charts"] as const).map((t) => {
           const sel = tab === t;
-          const label = t === "guide" ? "How to" : t === "history" ? "History" : "Charts";
+          const label = t === "guide" ? "Anleitung" : t === "history" ? "Verlauf" : "Diagramm";
           return (
             <button key={t} onClick={() => setTab(t)} style={{ background: "transparent", border: "none", cursor: "pointer", padding: "12px 0", position: "relative", fontFamily: "inherit", fontSize: 13, fontWeight: 600, color: sel ? TOK.text : TOK.dim, letterSpacing: "-0.01em" }}>
               {label}
@@ -104,16 +113,16 @@ export default function ExerciseDetail() {
       {tab === "guide" ? (
         <GuideTab name={ex.name} muscle={ex.primary_muscle} accentHex={accent.hex} info={info} />
       ) : loading ? (
-        <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Loading…</div>
+        <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Lädt…</div>
       ) : groups.length === 0 ? (
-        <EmptyState icon={<I.History size={20} />} title="No history yet" description="Log this exercise in a workout and it'll show up here." />
+        <EmptyState icon={<I.History size={20} />} title="Noch kein Verlauf" description="Logge diese Übung in einem Workout, dann erscheint sie hier." />
       ) : tab === "history" ? (
         <div>
           {groups.map((g) => (
             <div key={g.date} style={{ padding: "12px 16px 8px", borderBottom: `1px solid ${TOK.border}` }}>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-                <div style={{ ...TYPE.body, color: TOK.text, fontWeight: 600 }}>{new Date(g.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</div>
-                {g.top && <Tnum style={{ fontSize: 12, color: TOK.muted }}>top <span style={{ color: TOK.text }}>{fmtW(g.top.weight_kg)}kg × {g.top.reps}</span></Tnum>}
+                <div style={{ ...TYPE.body, color: TOK.text, fontWeight: 600 }}>{new Date(g.date).toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "short" })}</div>
+                {g.top && <Tnum style={{ fontSize: 12, color: TOK.muted }}>Top <span style={{ color: TOK.text }}>{fmtW(g.top.weight_kg)}kg × {g.top.reps}</span></Tnum>}
               </div>
               {g.sets.map((s) => (
                 <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: TOK.muted, padding: "3px 0" }}>
@@ -130,11 +139,11 @@ export default function ExerciseDetail() {
       ) : (
         <div style={{ padding: "16px 12px" }}>
           {chartData.length < 2 ? (
-            <div style={{ padding: "24px", textAlign: "center", color: TOK.dim, fontSize: 13 }}>Need at least 2 sessions to chart progress.</div>
+            <div style={{ padding: "24px", textAlign: "center", color: TOK.dim, fontSize: 13 }}>Mindestens 2 Einheiten nötig, um den Verlauf zu zeigen.</div>
           ) : (
             <Card style={{ padding: 14 }}>
               <div style={{ marginBottom: 8 }}>
-                <div style={{ ...TYPE.col, color: TOK.dim }}>Estimated 1RM</div>
+                <div style={{ ...TYPE.col, color: TOK.dim }}>Geschätztes 1RM</div>
                 <Tnum style={{ ...TYPE.h2, color: TOK.text }}>
                   {Math.round(chartData[chartData.length - 1].y)}
                   <span style={{ fontSize: 13, color: TOK.muted, marginLeft: 4, fontWeight: 400 }}>kg</span>
@@ -180,11 +189,11 @@ function GuideTab({ name, muscle, accentHex, info }: { name: string; muscle: str
 
       {steps.length === 0 ? (
         <div style={{ color: TOK.muted, fontSize: 13, lineHeight: 1.6 }}>
-          This exercise targets <span style={{ color: TOK.text }}>{muscle}</span>. Focus on a full range of motion and a controlled tempo.
+          Diese Übung trainiert <span style={{ color: TOK.text }}>{deMuscle(muscle)}</span>. Achte auf volle Bewegungsamplitude und kontrolliertes Tempo.
         </div>
       ) : (
         <>
-          <div style={{ ...TYPE.col, color: TOK.dim, marginBottom: 12 }}>How to perform</div>
+          <div style={{ ...TYPE.col, color: TOK.dim, marginBottom: 12 }}>Ausführung</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {steps.map((s, i) => (
               <div key={i} className="gym-fade" style={{ display: "flex", gap: 12, alignItems: "flex-start", animationDelay: `${Math.min(i, 6) * 60}ms` }}>
@@ -198,7 +207,7 @@ function GuideTab({ name, muscle, accentHex, info }: { name: string; muscle: str
 
       {cues.length > 0 && (
         <>
-          <div style={{ ...TYPE.col, color: TOK.dim, margin: "22px 0 10px" }}>Form cues</div>
+          <div style={{ ...TYPE.col, color: TOK.dim, margin: "22px 0 10px" }}>Technik-Hinweise</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {cues.map((c) => (
               <div key={c} style={{ padding: "8px 12px", background: TOK.surface, borderRadius: 10, fontSize: 12, color: TOK.text, fontWeight: 500 }}>{c}</div>

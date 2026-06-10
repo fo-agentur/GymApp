@@ -2,11 +2,11 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { fetchExercises, fetchProfile, logWeight } from "@/lib/data";
+import { fetchExercises, fetchProfile, fetchRoutines, type RoutineFull } from "@/lib/data";
 import type { Exercise } from "@/lib/supabase/types";
-import { ACCENT, Phone, TabBar, Sheet, Btn, I, TOK, TYPE, MACRO, type TabId } from "@/lib/design";
-import { IllOrbit } from "@/lib/illustrations";
-import { AppContext, type AppCtxValue, type ScreenId, type WorkoutConfig } from "./app-context";
+import { parseEquipment, type EquipmentId } from "@/lib/equipment";
+import { ACCENT, Phone, TabBar, Sheet, TOK, TYPE, Tnum, I, type TabId } from "@/lib/design";
+import { AppContext, type AppCtxValue, type ScreenId, type ScreenParams, type WorkoutConfig } from "./app-context";
 
 import Today from "./screens/Today";
 import Workout from "./screens/Workout";
@@ -14,44 +14,55 @@ import History from "./screens/History";
 import SessionDetail from "./screens/SessionDetail";
 import Library from "./screens/Library";
 import ExerciseDetail from "./screens/ExerciseDetail";
-import Program from "./screens/Program";
 import Routines from "./screens/Routines";
 import RoutineEditor from "./screens/RoutineEditor";
 import WorkoutOverview from "./screens/WorkoutOverview";
 import Progress from "./screens/Progress";
-import Food from "./screens/Food";
 import Profile from "./screens/Profile";
 import Settings from "./screens/Settings";
-import Onboarding from "./screens/Onboarding";
 
 const TAB_TO_SCREEN: Record<TabId, ScreenId> = {
   home: "today",
-  train: "program",
+  train: "routines",
   stats: "progress",
   more: "profile",
 };
-const SCREEN_TO_TAB: Partial<Record<ScreenId, TabId>> = {
+// Every screen belongs to a tab, so the bottom bar never disappears and the
+// active tab stays highlighted on sub-screens.
+const SCREEN_TO_TAB: Record<ScreenId, TabId> = {
   today: "home",
-  program: "train",
   routines: "train",
+  "routine-editor": "train",
+  "workout-overview": "train",
+  library: "train",
+  "exercise-detail": "train",
   progress: "stats",
+  history: "stats",
+  "session-detail": "stats",
   profile: "more",
-  // Nutrition is demoted out of the primary nav but still reachable from the
-  // Profile hub; keep the tab bar visible (under "Profil") while it's open.
-  food: "more",
+  settings: "more",
 };
+
+type NavEntry = { screen: ScreenId; params: ScreenParams };
+
+function paramsFor(screen: ScreenId, param?: string): ScreenParams {
+  if (screen === "session-detail") return { sessionId: param };
+  if (screen === "exercise-detail") return { exerciseId: param };
+  if (screen === "routine-editor") return { routineId: param };
+  if (screen === "workout-overview") return { routineId: param };
+  return {};
+}
 
 export default function AppShell({ userId, username }: { userId: string; username: string }) {
   const router = useRouter();
   const db = React.useMemo(() => createClient(), []);
-  const [active, setActive] = React.useState<ScreenId>("today");
-  const [params, setParams] = React.useState<{ sessionId?: string; exerciseId?: string; routineId?: string; programWorkoutId?: string }>({});
+  const [stack, setStack] = React.useState<NavEntry[]>([{ screen: "today", params: {} }]);
   const [workoutConfig, setWorkoutConfig] = React.useState<WorkoutConfig | null>(null);
   const [exercises, setExercises] = React.useState<Exercise[]>([]);
+  const [myEquipment, setMyEquipment] = React.useState<EquipmentId[]>([]);
   const [quickAdd, setQuickAdd] = React.useState(false);
-  const [profileLoaded, setProfileLoaded] = React.useState(false);
-  const [onboardingNeeded, setOnboardingNeeded] = React.useState(false);
-  const [showOnboarding, setShowOnboarding] = React.useState(false);
+
+  const top = stack[stack.length - 1];
 
   const reloadExercises = React.useCallback(async () => {
     try {
@@ -61,22 +72,19 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     }
   }, [db]);
 
-  React.useEffect(() => {
-    reloadExercises();
-  }, [reloadExercises]);
+  const reloadProfile = React.useCallback(async () => {
+    try {
+      const p = await fetchProfile(db, userId);
+      setMyEquipment(parseEquipment(p?.equipment));
+    } catch {
+      /* non-blocking */
+    }
+  }, [db, userId]);
 
   React.useEffect(() => {
-    (async () => {
-      try {
-        const p = await fetchProfile(db, userId);
-        setOnboardingNeeded(!p?.onboarding_completed);
-      } catch {
-        setOnboardingNeeded(false); // never block the app on a fetch error
-      } finally {
-        setProfileLoaded(true);
-      }
-    })();
-  }, [db, userId]);
+    reloadExercises();
+    reloadProfile();
+  }, [reloadExercises, reloadProfile]);
 
   const exMap = React.useMemo(() => {
     const m: Record<string, Exercise> = {};
@@ -84,23 +92,30 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     return m;
   }, [exercises]);
 
-  const goto = React.useCallback((screen: ScreenId, param?: string, kind?: "program" | "routine") => {
-    setParams((prev) => {
-      if (screen === "session-detail") return { ...prev, sessionId: param };
-      if (screen === "exercise-detail") return { ...prev, exerciseId: param };
-      if (screen === "workout-overview")
-        return kind === "program"
-          ? { ...prev, programWorkoutId: param, routineId: undefined }
-          : { ...prev, routineId: param, programWorkoutId: undefined };
-      if (screen === "routine-editor") return { ...prev, routineId: param };
-      return prev;
-    });
-    setActive(screen);
+  const goto = React.useCallback((screen: ScreenId, param?: string) => {
+    setStack((s) => [...s, { screen, params: paramsFor(screen, param) }]);
+  }, []);
+
+  const goBack = React.useCallback(() => {
+    setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  }, []);
+
+  const switchTab = React.useCallback((t: TabId) => {
+    setStack([{ screen: TAB_TO_SCREEN[t], params: {} }]);
   }, []);
 
   const startWorkout = React.useCallback((cfg: WorkoutConfig) => {
+    setQuickAdd(false);
     setWorkoutConfig(cfg);
-    setActive("workout");
+  }, []);
+
+  const endWorkout = React.useCallback((dest: "today" | "history") => {
+    setWorkoutConfig(null);
+    setStack(
+      dest === "history"
+        ? [{ screen: "today", params: {} }, { screen: "history", params: {} }]
+        : [{ screen: "today", params: {} }]
+    );
   }, []);
 
   const signOut = React.useCallback(async () => {
@@ -115,63 +130,30 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     username,
     exercises,
     exMap,
+    myEquipment,
     accent: ACCENT,
-    params,
+    params: top.params,
     goto,
+    goBack,
     startWorkout,
+    endWorkout,
     workoutConfig,
     reloadExercises,
-    restartOnboarding: () => setShowOnboarding(true),
+    reloadProfile,
     signOut,
   };
 
-  const activeTab = SCREEN_TO_TAB[active] ?? null;
-  const showTabBar = activeTab !== null;
-
-  // ── Onboarding gate: splash while loading, then questionnaire for new users ──
-  if (!profileLoaded) {
-    return (
-      <div className="stage">
-        <div className="phone" style={{ background: TOK.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div className="phone-dynamic-island" />
-          <div style={{ opacity: 0.55 }}><IllOrbit size={84} /></div>
-        </div>
-      </div>
-    );
-  }
-  if (onboardingNeeded || showOnboarding) {
-    return (
-      <div className="stage">
-        <div className="phone" style={{ background: TOK.bg }}>
-          <div className="phone-dynamic-island" />
-          <Onboarding
-            db={db}
-            userId={userId}
-            exercises={exercises}
-            onComplete={() => {
-              setOnboardingNeeded(false);
-              setShowOnboarding(false);
-              setActive("program"); // remount Program to show the fresh plan
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
   let body: React.ReactNode;
-  switch (active) {
+  switch (top.screen) {
     case "today": body = <Today />; break;
     case "history": body = <History />; break;
     case "session-detail": body = <SessionDetail />; break;
     case "library": body = <Library />; break;
     case "exercise-detail": body = <ExerciseDetail />; break;
-    case "program": body = <Program />; break;
     case "routines": body = <Routines />; break;
     case "routine-editor": body = <RoutineEditor />; break;
     case "workout-overview": body = <WorkoutOverview />; break;
     case "progress": body = <Progress />; break;
-    case "food": body = <Food />; break;
     case "profile": body = <Profile />; break;
     case "settings": body = <Settings />; break;
     default: body = <Today />;
@@ -180,7 +162,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
   return (
     <AppContext.Provider value={ctx}>
       <div className="stage">
-        {active === "workout" ? (
+        {workoutConfig ? (
           <div className="phone" style={{ background: TOK.bg }}>
             <div className="phone-dynamic-island" />
             <Workout />
@@ -188,19 +170,22 @@ export default function AppShell({ userId, username }: { userId: string; usernam
         ) : (
           <Phone
             tabBar={
-              showTabBar ? (
-                <TabBar active={activeTab} accent={ACCENT} onChange={(t) => goto(TAB_TO_SCREEN[t])} onAdd={() => setQuickAdd(true)} />
-              ) : undefined
+              <TabBar
+                active={SCREEN_TO_TAB[top.screen]}
+                accent={ACCENT}
+                addOpen={quickAdd}
+                onChange={(t) => { setQuickAdd(false); switchTab(t); }}
+                onAdd={() => setQuickAdd((v) => !v)}
+              />
             }
           >
-            <div key={active} className="gym-fade" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <div key={`${stack.length}-${top.screen}`} className="gym-fade" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
               {body}
             </div>
-            <QuickAddSheet
+            <QuickStartSheet
               open={quickAdd}
               onClose={() => setQuickAdd(false)}
               db={db}
-              userId={userId}
               goto={goto}
               startWorkout={startWorkout}
             />
@@ -211,64 +196,54 @@ export default function AppShell({ userId, username }: { userId: string; usernam
   );
 }
 
-// ── Quick-add sheet opened by the center + in the tab bar ──
-function QuickAddSheet({
-  open, onClose, db, userId, goto, startWorkout,
+// ── Quick-start sheet opened by the center + in the tab bar ─────
+function QuickStartSheet({
+  open, onClose, db, goto, startWorkout,
 }: {
   open: boolean;
   onClose: () => void;
   db: AppCtxValue["db"];
-  userId: string;
-  goto: (s: ScreenId) => void;
+  goto: (s: ScreenId, param?: string) => void;
   startWorkout: (c: WorkoutConfig) => void;
 }) {
-  const [mode, setMode] = React.useState<"menu" | "weight">("menu");
-  const [w, setW] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
+  const [routines, setRoutines] = React.useState<RoutineFull[]>([]);
+  const [loaded, setLoaded] = React.useState(false);
 
   React.useEffect(() => {
-    if (!open) {
-      setMode("menu");
-      setW("");
-    }
-  }, [open]);
-
-  const saveWeight = async () => {
-    const val = parseFloat(w.replace(",", "."));
-    if (!val || val <= 0) return;
-    setSaving(true);
-    try {
-      await logWeight(db, userId, new Date().toISOString().slice(0, 10), val);
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  };
+    if (!open) return;
+    let alive = true;
+    fetchRoutines(db)
+      .then((r) => { if (alive) setRoutines(r); })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
+  }, [open, db]);
 
   return (
-    <Sheet open={open} onClose={onClose} label="Schnell hinzufügen" title={mode === "weight" ? "Gewicht eintragen" : "Was willst du loggen?"}>
-      {mode === "menu" ? (
-        <div style={{ padding: "4px 12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <QuickRow icon={<I.Dumbbell size={20} color={TOK.accent} />} title="Training starten" sub="Aus Programm oder leer" onTap={() => { onClose(); startWorkout({ routineId: null, name: "Quick Workout" }); }} />
-          <QuickRow icon={<I.Scale size={20} color={MACRO.kcal} />} title="Gewicht eintragen" sub="Heutige Wiegung" onTap={() => setMode("weight")} />
-          <QuickRow icon={<I.Food size={20} color={MACRO.carbs} />} title="Essen loggen" sub="Suche · Barcode · Foto · manuell" onTap={() => { onClose(); goto("food"); }} />
-        </div>
-      ) : (
-        <div style={{ padding: "8px 16px 18px" }}>
-          <input
-            autoFocus
-            inputMode="decimal"
-            value={w}
-            onChange={(e) => setW(e.target.value)}
-            placeholder="z. B. 82.4 kg"
-            style={{ width: "100%", height: 54, borderRadius: 14, background: TOK.surface, border: `1px solid ${TOK.border}`, color: TOK.text, fontSize: 18, fontWeight: 600, padding: "0 16px", fontFamily: "inherit", boxSizing: "border-box" }}
+    <Sheet open={open} onClose={onClose} label="Training starten" title="Was möchtest du machen?">
+      <div style={{ padding: "4px 12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {loaded && routines.slice(0, 4).map((r) => (
+          <QuickRow
+            key={r.id}
+            icon={<I.Routine size={20} color={TOK.accent} />}
+            title={r.name}
+            sub={`${r.routine_exercises.length} Übungen · Routine starten`}
+            onTap={() => { onClose(); startWorkout({ routineId: r.id, name: r.name }); }}
           />
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <Btn variant="secondary" full onClick={() => setMode("menu")}>Zurück</Btn>
-            <Btn variant="primary" full onClick={saveWeight} disabled={saving || !w}>Speichern</Btn>
-          </div>
-        </div>
-      )}
+        ))}
+        <QuickRow
+          icon={<I.Dumbbell size={20} color={TOK.text} />}
+          title="Leeres Workout"
+          sub="Übungen während des Trainings hinzufügen"
+          onTap={() => { onClose(); startWorkout({ routineId: null, name: "Workout" }); }}
+        />
+        <QuickRow
+          icon={<I.Plus size={20} color={TOK.text} />}
+          title="Neue Routine erstellen"
+          sub="Eigenen Trainingsplan zusammenstellen"
+          onTap={() => { onClose(); goto("routine-editor"); }}
+        />
+      </div>
     </Sheet>
   );
 }
@@ -278,8 +253,8 @@ function QuickRow({ icon, title, sub, onTap }: { icon: React.ReactNode; title: s
     <button onClick={onTap} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", padding: 12, background: TOK.surface, border: "none", borderRadius: 14, cursor: "pointer", fontFamily: "inherit", textAlign: "left", WebkitTapHighlightColor: "transparent" }}>
       <div style={{ width: 42, height: 42, borderRadius: 12, background: TOK.surface3, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ ...TYPE.bodyEm, color: TOK.text }}>{title}</div>
-        <div style={{ fontSize: 12, color: TOK.dim, marginTop: 2 }}>{sub}</div>
+        <div style={{ ...TYPE.bodyEm, color: TOK.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
+        <Tnum style={{ fontSize: 12, color: TOK.dim, marginTop: 2, display: "block" }}>{sub}</Tnum>
       </div>
       <I.ChevR size={16} color={TOK.dim} />
     </button>

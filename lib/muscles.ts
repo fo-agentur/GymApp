@@ -1,6 +1,6 @@
-// Maps the app's 11 muscle groups to a weekly-volume heatmap colour.
-// "Sets this week" per group drives how brightly that muscle lights up on the
-// body map. Landmarks: ~10 sets = enough to maintain, ~18+ = high volume.
+// The app's 11 muscle groups + helpers for the weekly-volume body heatmap.
+// "Sets this week" per group drives how strongly that muscle lights up.
+// Landmarks: ~10 sets ≈ maintenance, ~16+ ≈ high volume.
 
 export const MUSCLE_GROUPS = [
   "Chest",
@@ -17,6 +17,21 @@ export const MUSCLE_GROUPS = [
 ] as const;
 export type MuscleGroup = (typeof MUSCLE_GROUPS)[number];
 
+export const MUSCLE_LABELS_DE: Record<MuscleGroup, string> = {
+  Chest: "Brust",
+  Back: "Rücken",
+  Shoulders: "Schultern",
+  Biceps: "Bizeps",
+  Triceps: "Trizeps",
+  Forearms: "Unterarme",
+  Core: "Rumpf",
+  Quads: "Oberschenkel",
+  Hamstrings: "Beinbeuger",
+  Glutes: "Gesäß",
+  Calves: "Waden",
+};
+export const deMuscle = (m: string) => MUSCLE_LABELS_DE[m as MuscleGroup] ?? m;
+
 // Sets at which a muscle is considered "fully" worked for the week (full colour).
 export const FULL_SETS = 16;
 
@@ -26,24 +41,10 @@ export function intensity(sets: number): number {
   return Math.min(1, sets / FULL_SETS);
 }
 
-// Heatmap colour from a 0..1 intensity, blended over the OLED surface.
-// 0 -> faint surface, low -> deep lime, high -> bright electric lime.
-export function heatColor(t: number): string {
-  if (t <= 0) return "#181818";
-  // interpolate between a dim olive and bright lime
-  const lerp = (a: number, b: number) => Math.round(a + (b - a) * t);
-  const from = [24, 42, 33]; // dim green-grey
-  const to = [61, 220, 132]; // #3ddc84 trained green
-  const r = lerp(from[0], to[0]);
-  const g = lerp(from[1], to[1]);
-  const b = lerp(from[2], to[2]);
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
 export function statusLabel(sets: number): { text: string; color: string } {
-  if (sets <= 0) return { text: "untrained", color: "#52525b" };
-  if (sets < 6) return { text: "low", color: "#a1a1aa" };
-  if (sets < 12) return { text: "on track", color: "#3ddc84" };
-  if (sets <= 22) return { text: "high", color: "#22c55e" };
-  return { text: "very high", color: "#fb923c" };
+  if (sets <= 0) return { text: "nicht trainiert", color: "var(--c-dim)" };
+  if (sets < 6) return { text: "wenig", color: "var(--c-muted)" };
+  if (sets < 12) return { text: "solide", color: "var(--c-pr)" };
+  if (sets <= 22) return { text: "viel", color: "var(--c-pr)" };
+  return { text: "sehr viel", color: "var(--c-accent)" };
 }

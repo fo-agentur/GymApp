@@ -7,11 +7,11 @@ import { TOK, ScreenHeader, SectionHeader, SessionRow, EmptyState, I, fmtVol, hm
 
 function datePill(iso: string) {
   const d = new Date(iso);
-  return { dow: d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase(), day: d.getDate() };
+  return { dow: d.toLocaleDateString("de-DE", { weekday: "short" }).toUpperCase().replace(".", ""), day: d.getDate() };
 }
 
 export default function History() {
-  const { db, goto } = useApp();
+  const { db, goto, goBack } = useApp();
   const [sessions, setSessions] = React.useState<WorkoutSession[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -31,13 +31,13 @@ export default function History() {
   for (const s of sessions) {
     const diff = now - new Date(s.started_at).getTime();
     let label: string;
-    if (diff < 7 * dayMs) label = "This Week";
-    else if (diff < 14 * dayMs) label = "Last Week";
+    if (diff < 7 * dayMs) label = "Diese Woche";
+    else if (diff < 14 * dayMs) label = "Letzte Woche";
     else {
       const d = new Date(s.started_at);
       const weekStart = new Date(d);
       weekStart.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-      label = `Week of ${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+      label = `Woche vom ${weekStart.toLocaleDateString("de-DE", { day: "numeric", month: "short" })}`;
     }
     const g = groups.find((x) => x.label === label);
     if (g) g.sessions.push(s);
@@ -45,12 +45,12 @@ export default function History() {
   }
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", paddingBottom: 24 }}>
-      <ScreenHeader large title="History" />
+    <div style={{ flex: 1, overflowY: "auto", paddingBottom: 96 }}>
+      <ScreenHeader large back onBack={goBack} title="Historie" />
       {loading ? (
-        <div style={{ padding: "8px 16px", color: TOK.dim, fontSize: 13 }}>Loading…</div>
+        <div style={{ padding: "8px 16px", color: TOK.dim, fontSize: 13 }}>Lädt…</div>
       ) : sessions.length === 0 ? (
-        <EmptyState icon={<I.History size={20} />} title="No sessions yet" description="Sessions you complete will appear here, grouped by week." />
+        <EmptyState icon={<I.History size={20} />} title="Noch keine Workouts" description="Abgeschlossene Workouts erscheinen hier, nach Wochen gruppiert." />
       ) : (
         groups.map((g) => (
           <div key={g.label} style={{ marginBottom: 4 }}>

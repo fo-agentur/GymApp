@@ -1,14 +1,13 @@
 "use client";
-// WorkoutOverview — the MacroFactor Workouts "Workout A" screen: a pre-planned
-// session you review before training. Target-muscle anatomy cards + every
-// exercise with a photo, its planned sets (rep-range + colour-coded RIR target)
-// and muscle tags, then a black Start Workout button. Works for both a saved
-// routine (params.routineId) and a program day (params.programWorkoutId).
+// WorkoutOverview — review a routine before training: target-muscle cards,
+// every exercise with photo, planned sets (rep range + RIR target), then a
+// pinned Start button.
 import React from "react";
 import { useApp } from "../app-context";
-import { fetchRoutine, fetchProgramWorkoutExercises } from "@/lib/data";
+import { fetchRoutine } from "@/lib/data";
 import { TOK, TYPE, Tnum, I, rirColor } from "@/lib/design";
 import { loadExerciseDB } from "@/lib/exercise-db";
+import { deMuscle } from "@/lib/muscles";
 import MuscleThumb from "../MuscleThumb";
 
 type PlanRow = {
@@ -28,36 +27,25 @@ function repLabel(e: PlanRow): string {
 }
 
 export default function WorkoutOverview() {
-  const { db, params, exMap, goto, startWorkout } = useApp();
+  const { db, params, exMap, goto, goBack, startWorkout } = useApp();
+  const routineId = params.routineId;
   const [name, setName] = React.useState("Workout");
   const [rows, setRows] = React.useState<PlanRow[]>([]);
   const [images, setImages] = React.useState<Record<string, string | null>>({});
   const [loading, setLoading] = React.useState(true);
-  const source = params.programWorkoutId
-    ? { kind: "program" as const, id: params.programWorkoutId }
-    : { kind: "routine" as const, id: params.routineId };
 
   React.useEffect(() => {
     (async () => {
       try {
-        if (source.kind === "program" && source.id) {
-          const [pexs, { data: pw }] = await Promise.all([
-            fetchProgramWorkoutExercises(db, source.id),
-            db.from("program_workouts").select("name").eq("id", source.id).maybeSingle(),
-          ]);
-          setName(pw?.name ?? "Workout");
-          setRows(pexs.map((e) => ({ id: e.id, exercise_id: e.exercise_id, target_sets: e.target_sets, target_reps_min: e.target_reps_min, target_reps_max: e.target_reps_max, target_rir: e.target_rir })));
-        } else if (source.id) {
-          const routine = await fetchRoutine(db, source.id);
-          setName(routine?.name ?? "Workout");
-          setRows((routine?.routine_exercises ?? []).map((e) => ({ id: e.id, exercise_id: e.exercise_id, target_sets: e.target_sets, target_reps_min: e.target_reps_min, target_reps_max: e.target_reps_max, target_rir: e.target_rir })));
-        }
+        if (!routineId) return;
+        const routine = await fetchRoutine(db, routineId);
+        setName(routine?.name ?? "Workout");
+        setRows((routine?.routine_exercises ?? []).map((e) => ({ id: e.id, exercise_id: e.exercise_id, target_sets: e.target_sets, target_reps_min: e.target_reps_min, target_reps_max: e.target_reps_max, target_rir: e.target_rir })));
       } finally {
         setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, params.routineId, params.programWorkoutId]);
+  }, [db, routineId]);
 
   React.useEffect(() => {
     loadExerciseDB().then((dbx) => {
@@ -84,31 +72,29 @@ export default function WorkoutOverview() {
     return Object.entries(agg).map(([m, v]) => ({ muscle: m, ...v })).sort((a, b) => b.sets - a.sets);
   }, [rows, exMap]);
 
-  const start = () => {
-    if (source.kind === "program") startWorkout({ routineId: null, name, programWorkoutId: source.id });
-    else if (source.id) startWorkout({ routineId: source.id, name });
-  };
-
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, position: "relative" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 8px", minHeight: 52 }}>
-        <button onClick={() => goto(source.kind === "program" ? "program" : "routines")} style={hIcon} aria-label="Zurück">
+        <button onClick={goBack} style={hIcon} aria-label="Zurück">
           <I.ChevL size={20} color={TOK.text} />
         </button>
-        <div style={{ flex: 1, ...TYPE.cardTitle, color: TOK.text, textAlign: "center" }}>{name}</div>
-        {source.kind === "program" ? <div style={{ width: 36 }} /> : (
-          <button onClick={() => source.id && goto("routine-editor", source.id)} style={hIcon} aria-label="Bearbeiten">
-            <I.Edit size={18} color={TOK.muted} />
-          </button>
-        )}
+        <div style={{ flex: 1, ...TYPE.cardTitle, color: TOK.text, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+        <button onClick={() => routineId && goto("routine-editor", routineId)} style={hIcon} aria-label="Bearbeiten">
+          <I.Edit size={18} color={TOK.muted} />
+        </button>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 16px 110px" }}>
         {loading ? (
           <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Lädt…</div>
         ) : rows.length === 0 ? (
-          <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Keine Übungen.</div>
+          <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>
+            Keine Übungen in dieser Routine.
+            <div style={{ marginTop: 12 }}>
+              <button onClick={() => routineId && goto("routine-editor", routineId)} style={{ height: 40, padding: "0 16px", borderRadius: 999, background: TOK.text, color: "var(--c-bg)", border: "none", fontFamily: "inherit", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Übungen hinzufügen</button>
+            </div>
+          </div>
         ) : (
           <>
             {/* Target muscles */}
@@ -122,7 +108,7 @@ export default function WorkoutOverview() {
                         <MuscleThumb muscle={m.muscle} size={40} />
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ ...TYPE.bodyEm, color: TOK.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.muscle}</div>
+                        <div style={{ ...TYPE.bodyEm, color: TOK.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{deMuscle(m.muscle)}</div>
                         <Tnum style={{ fontSize: 11, color: TOK.dim }}>{m.exercises} Üb. · {m.sets} Sätze</Tnum>
                       </div>
                     </div>
@@ -151,7 +137,7 @@ export default function WorkoutOverview() {
                       {tags.length > 0 && (
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
                           {tags.map((t) => (
-                            <span key={t} style={{ fontSize: 10.5, color: TOK.muted, background: TOK.surface2, borderRadius: 6, padding: "2px 7px" }}>{t}</span>
+                            <span key={t} style={{ fontSize: 10.5, color: TOK.muted, background: TOK.surface2, borderRadius: 6, padding: "2px 7px" }}>{deMuscle(t)}</span>
                           ))}
                         </div>
                       )}
@@ -177,8 +163,8 @@ export default function WorkoutOverview() {
 
       {/* Pinned Start */}
       {!loading && rows.length > 0 && (
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 16px 26px", background: "linear-gradient(to bottom, transparent 0%, var(--c-bg) 45%)" }}>
-          <button onClick={start} style={{ width: "100%", height: 56, background: TOK.text, color: "var(--c-bg)", border: "none", borderRadius: 16, fontFamily: "inherit", fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 16px 14px", background: "linear-gradient(to bottom, transparent 0%, var(--c-bg) 45%)" }}>
+          <button onClick={() => routineId && startWorkout({ routineId, name })} style={{ width: "100%", height: 56, background: TOK.text, color: "var(--c-bg)", border: "none", borderRadius: 16, fontFamily: "inherit", fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             Workout starten <I.ArrowR size={16} color="var(--c-bg)" />
           </button>
         </div>

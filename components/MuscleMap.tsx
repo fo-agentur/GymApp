@@ -3,20 +3,20 @@ import React from "react";
 import { TOK } from "@/lib/design";
 import { intensity, type MuscleGroup } from "@/lib/muscles";
 
-// Front + back anatomical silhouette (MacroFactor "Workout Complete" style): a
-// light body outline with each muscle region highlighted in brand blue by how
-// much it was worked (sets -> intensity). Tappable via onSelect.
+// Front + back anatomical silhouette: a light body outline with each muscle
+// region tinted brand blue by how much it was worked (sets → intensity).
+// Tappable via onSelect. `height` scales the whole figure.
 
 type Sets = Partial<Record<MuscleGroup, number>>;
 const BODY = "var(--c-surface2)"; // light silhouette
 const OUTLINE = "var(--c-border)";
 const UNWORKED = "var(--c-surface3)";
 
-// Blue heat: worked muscles glow brand-blue, scaled by weekly set intensity.
+// Worked muscles glow brand-blue, scaled by weekly set intensity.
 function blueHeat(sets: number): string {
   const t = intensity(sets);
   if (t <= 0) return UNWORKED;
-  const a = 0.45 + 0.55 * t;
+  const a = 0.35 + 0.65 * t;
   return `rgba(47, 107, 255, ${a.toFixed(2)})`;
 }
 
@@ -24,14 +24,19 @@ export default function MuscleMap({
   sets,
   onSelect,
   selected,
+  height = 330,
+  labels = true,
 }: {
   sets: Sets;
   onSelect?: (m: MuscleGroup) => void;
   selected?: MuscleGroup | null;
+  height?: number;
+  labels?: boolean;
 }) {
+  const w = Math.round((height / 330) * 150);
   const fill = (m: MuscleGroup) => blueHeat(sets[m] ?? 0);
-  const stroke = (m: MuscleGroup) => (selected === m ? TOK.text : "rgba(0,0,0,0.18)");
-  const sw = (m: MuscleGroup) => (selected === m ? 1.4 : 0.5);
+  const stroke = (m: MuscleGroup) => (selected === m ? TOK.text : "rgba(0,0,0,0.15)");
+  const sw = (m: MuscleGroup) => (selected === m ? 1.6 : 0.5);
 
   function M({ m, d }: { m: MuscleGroup; d: string }) {
     return (
@@ -49,7 +54,7 @@ export default function MuscleMap({
   return (
     <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
       {/* ---------- FRONT ---------- */}
-      <svg width="150" height="330" viewBox="0 0 160 360" style={{ display: "block" }}>
+      <svg width={w} height={height} viewBox="0 0 160 360" style={{ display: "block" }}>
         {/* silhouette outline */}
         <path
           fill={BODY}
@@ -89,11 +94,11 @@ export default function MuscleMap({
         {/* calves */}
         <M m="Calves" d="M60 250 c5 -1 10 -1 14 1 c2 18 0 40 -4 56 c-1 6 -4 8 -6 8 c-2 0 -4 -4 -6 -12 c-3 -17 -2 -40 2 -53 z" />
         <M m="Calves" d="M100 250 c-5 -1 -10 -1 -14 1 c-2 18 0 40 4 56 c1 6 4 8 6 8 c2 0 4 -4 6 -12 c3 -17 2 -40 -2 -53 z" />
-        <text x="80" y="352" textAnchor="middle" fontSize="9" fill="var(--c-dim)" fontWeight="700">VORNE</text>
+        {labels && <text x="80" y="352" textAnchor="middle" fontSize="9" fill="var(--c-dim)" fontWeight="700">VORNE</text>}
       </svg>
 
       {/* ---------- BACK ---------- */}
-      <svg width="150" height="330" viewBox="0 0 160 360" style={{ display: "block" }}>
+      <svg width={w} height={height} viewBox="0 0 160 360" style={{ display: "block" }}>
         <path
           fill={BODY}
           stroke={OUTLINE}
@@ -135,7 +140,7 @@ export default function MuscleMap({
         {/* calves */}
         <M m="Calves" d="M60 250 c5 -1 10 -1 14 1 c2 18 0 40 -4 56 c-1 6 -4 8 -6 8 c-2 0 -4 -4 -6 -12 c-3 -17 -2 -40 2 -53 z" />
         <M m="Calves" d="M100 250 c-5 -1 -10 -1 -14 1 c-2 18 0 40 4 56 c1 6 4 8 6 8 c2 0 4 -4 6 -12 c3 -17 2 -40 -2 -53 z" />
-        <text x="80" y="352" textAnchor="middle" fontSize="9" fill="var(--c-dim)" fontWeight="700">HINTEN</text>
+        {labels && <text x="80" y="352" textAnchor="middle" fontSize="9" fill="var(--c-dim)" fontWeight="700">HINTEN</text>}
       </svg>
     </div>
   );

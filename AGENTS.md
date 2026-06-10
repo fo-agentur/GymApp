@@ -1,170 +1,117 @@
 # AGENTS.md — GymApp
 
-## North Star (the goal — read this first)
+## North Star (read this first)
 
-**GymApp = MacroFactor Nutrition + MacroFactor Workouts, fused into ONE app.**
+**GymApp = a lean, personal workout tracker.** Users create their OWN routines
+(no generated programs), track workouts cleanly (sets, RIR, rest timer, plate
+calculator), and review history + statistics (including a body-map muscle
+heatmap, MacroFactor-Workouts-style).
 
-MacroFactor ships two separate apps (Nutrition, and Workouts launched Jan 2026).
-The goal of GymApp is to have **both of those apps in a single PWA**, and to match
-MacroFactor **in design, in feel, and — above all — in functionality, as closely as
-possible (1:1)**. Same screens, same interactions, same charts, and the same two
-"magic" algorithms (see *Adaptive Engines* below).
+Explicitly **out of scope** (removed in v2.0): nutrition/food tracking, body
+weight logging, auto-generated training programs, onboarding questionnaires.
+The owner uses a separate app for nutrition. Do not re-add these.
 
 Audience: Florian + ~10 friends. No paywall, no ads, no social feed. Multi-user,
 each user's data isolated via Postgres Row Level Security.
 
-Repo: https://github.com/fo-agentur/GymApp
+Repo: https://github.com/fo-agentur/GymApp · UI language: **German**.
 
-> This is a faithful, functionality-equivalent re-creation inspired by MacroFactor's
-> UX and its **publicly documented** algorithms — not a pixel/IP copy of their app.
+## Feature set (v2.0)
 
-## Reference: what we are matching
+- **Auth**: username + password (synthetic `<username>@gymapp.local`, trigger
+  auto-confirms; no e-mail). Sign-in page at `/sign-in`.
+- **Home (Dashboard)**: week strip + sets/volume/time, muscle-map snapshot,
+  quick-start for routines, recent sessions.
+- **Training tab (Routines)**: create/edit/start own routines. Editor supports
+  add, swap-in-place (targets kept), reorder, per-exercise targets
+  (sets, rep range, RIR, rest).
+- **Live workout** (full-screen overlay): pre-filled prescription from the
+  routine + double-progression suggestion from last performance, custom keypad,
+  RIR dots, warmup/failure/partial set types, rest timer (±15s/skip, vibration
+  + beep), plate calculator, swap/add/remove exercise mid-session, un-check a
+  logged set (deletes the row), info sheet (never navigates away — that would
+  kill the session), workout-complete screen with muscle map + PRs.
+- **History**: sessions grouped by week → session detail (delete possible).
+- **Statistik**: "Muskeln" = body heatmap (front/back SVG, working sets last
+  7 days, per-muscle breakdown) · "Verlauf" = sets/volume bars over
+  1W…Alle + top exercises.
+- **Exercise library**: 873 exercises, search + muscle/equipment chips,
+  relevance-ranked (core lifts first), collapsed groups, custom exercises.
+- **Equipment profiles** (`lib/equipment.ts`, stored in `profiles.equipment`
+  as `{ items: EquipmentId[] }`): `multipress` (Atletica Multipresse = smith
+  machine + cable + bench), `dumbbell`, `barbell`, `machines`, `full_gym`.
+  Drives the default "★ Mein Equipment" filter in library/picker. Selected in
+  Settings.
 
-Two MacroFactor apps, both with light + dark themes:
-
-- **Nutrition** — fast food logging (search, barcode, label scan, **AI photo→macros**,
-  recipe-by-URL, favorites, speech), a **1.36M-entry verified food database**, full
-  micronutrients, weight tracking with a smoothed **True-Weight** trend, period &
-  habit tracking, body metrics & progress photos, a **customizable dashboard**, and
-  the **adaptive nutrition coach** (Coached / Collaborative / Manual) that re-estimates
-  expenditure and adjusts calorie + macro targets every week.
-- **Workouts** — structured program tracker & coach: rest timers, drop sets, partial
-  reps, myoreps, failure sets, **RIR**, left/right tracking, supersets, smart warm-ups,
-  exercise notes, **smart auto-progression** that learns your rate of progress, program
-  builder + periodization, custom exercises, multiple gym profiles, plate calculator,
-  900+ exercises with demo videos, volume/sets charts, PR tracking.
-
-**Signature UI to replicate:** the weekly **macro bar-grid** (7 days × 4 macros,
-selected day boxed, Consumed/Remaining toggle), dual **insight cards** (Expenditure
-line + Weight-Trend line), the **expenditure** area chart, the **weight-trend**
-scatter+smoothed line, **goal-progress** waterfall, and per-set rows with rep targets +
-RIR pills + failure markers. Bottom nav = 5 slots with a central round **+** FAB.
-
-## Tech stack (as actually built — this is reality, not aspiration)
+## Tech stack (reality)
 
 - **Next.js 15** App Router, **TypeScript strict**, **React 19**
-- **Inline-style React components** (NOT Tailwind/shadcn). The whole design system lives
-  in `lib/design.tsx` and is the contract.
-- **Supabase**: `@supabase/ssr` (browser/server clients + middleware auth guard) and
-  `@supabase/supabase-js` for all queries (NOT Drizzle). Postgres + Auth + Storage + Edge
-  Functions (Deno).
-- **State**: plain React state + Supabase. No TanStack/Zustand/Dexie (yet).
-- **Charts**: lightweight inline SVG (no chart lib).
-- **Food data**: Open Food Facts **live** API + organic caching into Postgres; barcode via
-  `@zxing/browser`.
-- **AI**: Supabase Edge Function `analyze-meal` → OpenRouter vision model.
-- **PWA**: `app/manifest.ts` + apple-web-app meta. **pnpm**. Hosted on **Vercel**.
+- **Inline-style React components** (NOT Tailwind/shadcn). Design system =
+  `lib/design.tsx`; theme tokens = CSS vars in `app/globals.css`
+  (light default, dark under `[data-theme="dark"]`).
+- **Supabase**: `@supabase/ssr` (browser/server clients + middleware auth
+  guard) and `@supabase/supabase-js` for queries. Postgres + Auth.
+- **State**: plain React state. **Charts**: inline SVG. **PWA**:
+  `app/manifest.ts`. **pnpm**. Hosted on **Vercel**.
 
-## Architecture — client-side screen router (important)
+## Architecture — client-side screen router
 
-There is **no per-screen Next.js route**. The whole app is one client shell:
+No per-screen Next.js routes. `app/page.tsx` → `components/AppShell.tsx`,
+which holds a **navigation stack** (`goto` pushes, `goBack` pops, tab taps
+reset). The bottom `TabBar` (4 tabs + center "+" quick-start sheet) stays
+visible on every screen; the active workout renders as a full-screen overlay
+outside the router. Screens live in `components/screens/*.tsx`; ScreenIds in
+`components/app-context.ts`.
 
-- `app/page.tsx` → renders `components/AppShell.tsx`.
-- `components/AppShell.tsx` is the router: it holds the active `ScreenId` and swaps the
-  body via a `goto(screen)` call. Bottom `TabBar` maps tabs → screens.
-- `components/app-context.ts` defines `ScreenId` + the navigation context.
-- Each screen is a component in `components/screens/*.tsx`.
-- Active Workout renders **outside** the screen-fade wrapper (full-screen overlay).
-
-When adding a screen: add the `ScreenId`, add a `case` in `AppShell`, wire any tab in
-`TabBar` (in `lib/design.tsx`).
-
-## Repository structure (real)
-
-```
-app/                  page.tsx (→ AppShell), layout.tsx, manifest.ts, sign-in/page.tsx
-components/
-  AppShell.tsx        screen router + active-workout overlay
-  app-context.ts      ScreenId + nav context
-  MuscleMap.tsx       anatomical SVG muscle heatmap
-  screens/            Today, Workout, Food, FoodAddSheet, Library, ExercisePicker,
-                      ExerciseDetail, Progress, History, SessionDetail, Routines,
-                      RoutineEditor, Profile, Settings
-lib/
-  design.tsx          DESIGN SYSTEM — tokens, icons, all UI atoms, TabBar, Phone chrome
-  data.ts             all Supabase queries + Open Food Facts + analyze-meal calls
-  supabase/           client.ts, server.ts, middleware.ts, config.ts, types.ts
-  db/migrations/      0001_init … 0005_fix_last_performance (mirror of applied SQL)
-  muscles.ts, exercise-db.ts, exercise-guide.ts, anim.ts, username.ts
-supabase/functions/analyze-meal/index.ts   Deno edge fn (OpenRouter vision)
-```
-
-## Design system (MacroFactor-faithful)
-
-`lib/design.tsx` is the single source of truth. Direction for the redesign:
-
-- **Themes:** dark + light (MacroFactor supports both). **Dark is primary** (matches their
-  Nutrition hero and our existing base); light is a token-swap fast-follow. Implement via
-  CSS custom properties so components don't change when the theme flips.
-- **Primary / neutral:** white pill buttons + white active states in dark mode (black on
-  white in light mode). The old single lime accent is retired.
-- **Macro color semantics (data viz):** energy/kcal **blue** `#4d8dff`, protein
-  **coral** `#ff7043`, fat **amber** `#ffc24b`, carbs **green** `#3ddc84`.
-- **Font:** Geist / Geist Mono (kept — it matches MacroFactor's geometric sans). Tabular
-  numbers for all stats.
-- **Shape:** rounded cards (~18px), full-radius pills, generous spacing.
-
-## Adaptive Engines (the core functionality — match these)
-
-1. **Nutrition coach**
-   - *True-Weight*: smoothed weight trend (EWMA) that filters daily scale noise.
-   - *Adaptive expenditure (TDEE)*: rolling energy-balance estimate —
-     `expenditure ≈ mean(intake) − (Δ trend-weight × kcal/kg) / days`, with smoothing to
-     avoid over-correction. Improves as more data lands.
-   - *Weekly check-in*: given goal + target rate, adjust daily calorie + macro targets.
-     Modes: **Coached** (auto), **Collaborative** (suggest, user tweaks), **Manual** (fixed).
-2. **Workout auto-progression**
-   - Per-exercise e1RM trend + **double-progression**: at target RIR and top of the rep
-     range → add weight; otherwise add reps. Program targets evolve from logged sets.
-
-Start client-side (computed on app open, results persisted); a scheduled Edge Function is
-an optional later upgrade.
+When adding a screen: add the `ScreenId`, a `case` in `AppShell`, and a
+`SCREEN_TO_TAB` entry (so the tab bar highlights correctly).
 
 ## Database (Supabase)
 
-- Project ref `aiptokxagqthzhpmtjyk` (free tier — pauses when idle; `restore_project` and
-  wait for `ACTIVE_HEALTHY` before SQL). Managed via the **Supabase MCP connector**, not
-  the CLI.
-- Migrations live in `lib/db/migrations/` and must mirror what's applied. All tables have
-  **RLS enabled**; run `get_advisors(security)` after DDL and fix warnings.
-- Auth = **username + password** (synthetic `<username>@gymapp.local`; a trigger
-  auto-confirms accounts so login is instant — no email).
+- Project ref `aiptokxagqthzhpmtjyk` (free tier — pauses when idle;
+  `restore_project` and wait for `ACTIVE_HEALTHY` before SQL). Managed via the
+  **Supabase MCP connector**, not the CLI.
+- Active tables: `profiles`, `exercises` (873 global rows with
+  `user_id IS NULL` + per-user custom), `routines`, `routine_exercises`,
+  `workout_sessions`, `sets`. All RLS-scoped to `auth.uid()`.
+- Legacy tables from v1 (foods, food_logs, weight_logs, programs, …) still
+  exist with data but are no longer referenced by the app. Don't drop them
+  without explicit approval — real users exist.
+- Migrations live in `lib/db/migrations/` and must mirror what's applied.
 
-## Security & data rules (hard constraints — do not break)
+## Security & data rules (hard constraints)
 
-- **Never** paste/accept the Supabase `sbp_…` personal access token in chat. Use the MCP
-  connector.
-- **Never** put the OpenRouter API key in chat or in code. It is a Supabase Edge Function
-  secret `OPENROUTER_API_KEY` (set in the Dashboard). The app must degrade gracefully when
-  it's absent (barcode/search/manual still work).
-- **Never** commit `SUPABASE_SERVICE_ROLE_KEY`. Only the public URL + anon/publishable key
-  ship to the client (RLS protects data).
+- **Never** paste/accept the Supabase `sbp_…` personal access token in chat.
+- **Never** commit `SUPABASE_SERVICE_ROLE_KEY`. Only the public URL +
+  anon/publishable key ship to the client (RLS protects data).
 - **Real users exist** — never delete accounts or user data.
 
 ## Build / verify / deploy
 
-- `pnpm dev` (http://localhost:3000) · `pnpm build` + `pnpm typecheck` must be green at the
-  end of every phase.
-- `supabase/functions` is excluded from tsc (Deno globals).
-- Verify visually at the 390 px mobile size (Playwright) — especially any bottom sheet
-  inside a tab screen (see *gotchas*).
+- `pnpm dev` (http://localhost:3000) · `pnpm typecheck` + `pnpm build` must be
+  green before any push.
+- Verify visually at the 390 px mobile size (Playwright) — especially bottom
+  sheets (see gotchas).
 - Vercel auto-deploys on push to `main`. Production:
-  `gym-app-fo-agenturs-projects.vercel.app` (old `gym-app-psi-liart.vercel.app` still
-  aliased). Live stays untouched until a deploy is explicitly approved.
+  `gym-app-fo-agenturs-projects.vercel.app`.
+
+## Gotchas (learned the hard way)
+
+- **`.gym-fade` must stay opacity-only.** Any `transform` on the screen
+  wrapper creates a containing block that mis-anchors `position:absolute`
+  bottom sheets.
+- **Sheets must NOT live inside a scrolling container** — they anchor to the
+  scroll content and jump around. Pattern: screen root = non-scrolling flex
+  column, inner `overflowY:auto` list, `Sheet`s as siblings of the scroll div.
+- **The tab bar needs `position:relative; zIndex`** — the center "+" protrudes
+  above it and positioned screen content paints over it otherwise.
+- `supabase/functions` is excluded from tsc (Deno globals) — currently empty.
 
 ## Working rules
 
-- Inline styles only; match `lib/design.tsx`. No Tailwind, no new heavy deps without reason.
+- Inline styles only; match `lib/design.tsx`. No new heavy deps without reason.
+- UI copy in German; code/comments in English.
 - Surgical changes; keep TypeScript strict (no unexplained `any`).
-- **OneDrive worktree caution:** do NOT fire many parallel Bash/PowerShell/browser calls —
-  they collide (`Device busy`). Work sequentially. `git` via PowerShell prints stderr in red
-  even on success — check the actual ref line.
-- **CSS gotcha (learned the hard way):** the `.gym-fade` screen wrapper must stay
-  **opacity-only**. Any `transform` on it (even an identity matrix under
-  `animation-fill-mode: both`) creates a containing block that mis-anchors
-  `position:absolute` bottom sheets. Closed `Sheet`s also set `visibility:hidden`.
-- Commit per phase: `feat: phase X — …`. Branch off; the current live snapshot is on
-  `backup/launch-v1`.
 
 ## Environment variables
 
@@ -173,5 +120,5 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=   # publishable/anon — safe in client (RLS protects data)
 SUPABASE_SERVICE_ROLE_KEY=       # server-only, never committed
 ```
-`.env.local` is gitignored. The OpenRouter key is a Supabase Edge Function secret, not an
-app env var.
+`.env.local` is gitignored. Fallbacks for URL + anon key are baked into
+`lib/supabase/config.ts` so the deployed app works out of the box.
