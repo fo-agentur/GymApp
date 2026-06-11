@@ -7,7 +7,7 @@ import { useApp } from "../app-context";
 import { fetchSessions, fetchRoutines, weeklyMuscleSets, fetchTodayNutrition, type RoutineFull, type TodayNutrition } from "@/lib/data";
 import type { WorkoutSession } from "@/lib/supabase/types";
 import { TOK, TYPE, Tnum, I, SectionHeader, SessionRow, EmptyState, WeekStrip, fmtVol, hmm } from "@/lib/design";
-import type { MuscleGroup } from "@/lib/muscles";
+import { deMuscle, type MuscleGroup } from "@/lib/muscles";
 import MuscleMap from "../MuscleMap";
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -56,6 +56,22 @@ export default function Today() {
   const trainedDays = new Set(sessions.map((s) => new Date(s.started_at).toDateString()));
   const anyMuscle = Object.values(muscleSets).some((v) => (v ?? 0) > 0);
 
+  // Next training = the routine that hasn't been trained for the longest time
+  // (never-trained routines first). Its hero card carries the primary CTA.
+  const lastTrained: Record<string, number> = {};
+  for (const s of sessions) {
+    if (!s.routine_id) continue;
+    const t = new Date(s.started_at).getTime();
+    if (!lastTrained[s.routine_id] || t > lastTrained[s.routine_id]) lastTrained[s.routine_id] = t;
+  }
+  const ranked = [...routines].sort((a, b) => (lastTrained[a.id] ?? 0) - (lastTrained[b.id] ?? 0));
+  const hero = ranked[0] ?? null;
+  const heroLastSession = hero ? sessions.find((s) => s.routine_id === hero.id) ?? null : null;
+  const heroMuscles = hero
+    ? [...new Set(hero.routine_exercises.map((re) => exMap[re.exercise_id]?.primary_muscle).filter(Boolean))].slice(0, 3)
+    : [];
+  const others = ranked.slice(1, 4);
+
   if (loading) return <div style={{ padding: 24, color: TOK.dim, fontSize: 13 }}>Lädt…</div>;
 
   return (
@@ -65,6 +81,42 @@ export default function Today() {
         {now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}
       </div>
       <div style={{ ...TYPE.display, color: TOK.text, marginTop: 4 }}>Hey {username}</div>
+
+      {/* Next training — primary CTA */}
+      {hero && (
+        <div style={{ marginTop: 16, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "18px 16px 16px", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: accent.hex, opacity: 0.9 }} />
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+            <div style={{ ...TYPE.eyebrow, color: TOK.accent }}>Nächstes Training</div>
+            <Tnum style={{ fontSize: 12, color: TOK.dim }}>
+              {lastTrained[hero.id] ? `Zuletzt ${agoLabel(lastTrained[hero.id])}` : "Noch nie trainiert"}
+            </Tnum>
+          </div>
+          <div style={{ ...TYPE.h2, color: TOK.text, marginTop: 8 }}>{hero.name}</div>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            <span style={chip}><Tnum>{hero.routine_exercises.length}</Tnum>&nbsp;Übungen</span>
+            {heroMuscles.map((m) => (
+              <span key={m} style={chip}>{deMuscle(m as string)}</span>
+            ))}
+          </div>
+          {heroLastSession && (
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline", marginTop: 12, fontSize: 12, color: TOK.muted }}>
+              <span style={{ fontWeight: 600 }}>Letzte Leistung</span>
+              <Tnum>{fmtVol(heroLastSession.total_volume_kg ?? 0)} kg</Tnum>
+              <span style={{ color: TOK.dim }}>·</span>
+              <Tnum>{heroLastSession.total_sets ?? 0} Sätze</Tnum>
+              <span style={{ color: TOK.dim }}>·</span>
+              <Tnum>{hmm(Math.round((heroLastSession.duration_seconds ?? 0) / 60))}</Tnum>
+            </div>
+          )}
+          <button
+            onClick={() => startWorkout({ routineId: hero.id, name: hero.name })}
+            style={{ width: "100%", height: 48, marginTop: 14, borderRadius: 14, background: accent.hex, color: accent.ink, border: "none", fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, WebkitTapHighlightColor: "transparent" }}
+          >
+            Training starten <I.ArrowR size={15} color={accent.ink} />
+          </button>
+        </div>
+      )}
 
       {/* This week */}
       <div style={{ marginTop: 16, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "18px 16px 16px" }}>
@@ -98,35 +150,42 @@ export default function Today() {
         </button>
       )}
 
-      {/* Quick start */}
-      <SectionHeader title="Schnellstart" style={{ padding: "24px 2px 8px" }} action={
-        routines.length > 0 ? <button onClick={() => goto("routines")} style={linkBtn}>Alle<I.ChevR size={12} color={TOK.dim} /></button> : undefined
-      } />
+      {/* More routines */}
       {routines.length === 0 ? (
-        <button onClick={() => goto("routine-editor")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, background: TOK.surface, border: `1.5px dashed ${TOK.border}`, borderRadius: 16, padding: "16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", WebkitTapHighlightColor: "transparent" }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: TOK.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <I.Plus size={18} color={TOK.text} w={2} />
-          </div>
-          <div>
-            <div style={{ ...TYPE.bodyEm, color: TOK.text }}>Erste Routine erstellen</div>
-            <div style={{ fontSize: 12, color: TOK.dim, marginTop: 2 }}>Eigener Plan mit Übungen, Sätzen & Pausen</div>
-          </div>
-        </button>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {routines.slice(0, 3).map((r) => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, padding: "12px 12px 12px 16px" }}>
-              <button onClick={() => goto("workout-overview", r.id)} style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left", padding: 0, WebkitTapHighlightColor: "transparent" }}>
-                <div style={{ ...TYPE.bodyEm, color: TOK.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
-                <Tnum style={{ fontSize: 12, color: TOK.dim, marginTop: 2, display: "block" }}>{r.routine_exercises.length} Übungen</Tnum>
-              </button>
-              <button onClick={() => startWorkout({ routineId: r.id, name: r.name })} style={{ flexShrink: 0, height: 38, padding: "0 16px", borderRadius: 999, background: accent.hex, color: accent.ink, border: "none", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, WebkitTapHighlightColor: "transparent" }}>
-                Start <I.ArrowR size={13} color={accent.ink} />
-              </button>
+        <>
+          <SectionHeader title="Schnellstart" style={{ padding: "24px 2px 8px" }} />
+          <button onClick={() => goto("routine-editor")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, background: TOK.surface, border: `1.5px dashed ${TOK.border}`, borderRadius: 16, padding: "16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", WebkitTapHighlightColor: "transparent" }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: TOK.primarySoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <I.Plus size={18} color={TOK.text} w={2} />
             </div>
-          ))}
-        </div>
-      )}
+            <div>
+              <div style={{ ...TYPE.bodyEm, color: TOK.text }}>Erste Routine erstellen</div>
+              <div style={{ fontSize: 12, color: TOK.dim, marginTop: 2 }}>Eigener Plan mit Übungen, Sätzen & Pausen</div>
+            </div>
+          </button>
+        </>
+      ) : others.length > 0 ? (
+        <>
+          <SectionHeader title="Weitere Routinen" style={{ padding: "24px 2px 8px" }} action={
+            <button onClick={() => goto("routines")} style={linkBtn}>Alle<I.ChevR size={12} color={TOK.dim} /></button>
+          } />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {others.map((r) => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, padding: "12px 12px 12px 16px" }}>
+                <button onClick={() => goto("workout-overview", r.id)} style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left", padding: 0, WebkitTapHighlightColor: "transparent" }}>
+                  <div style={{ ...TYPE.bodyEm, color: TOK.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                  <Tnum style={{ fontSize: 12, color: TOK.dim, marginTop: 2, display: "block" }}>
+                    {r.routine_exercises.length} Übungen{lastTrained[r.id] ? ` · ${agoLabel(lastTrained[r.id])}` : ""}
+                  </Tnum>
+                </button>
+                <button onClick={() => startWorkout({ routineId: r.id, name: r.name })} style={{ flexShrink: 0, height: 38, padding: "0 16px", borderRadius: 999, background: TOK.surface2, color: TOK.text, border: `1px solid ${TOK.border}`, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, WebkitTapHighlightColor: "transparent" }}>
+                  Start <I.ArrowR size={13} color={TOK.text} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {/* Recent */}
       <SectionHeader title="Zuletzt" style={{ padding: "24px 2px 8px" }} action={
@@ -151,6 +210,18 @@ export default function Today() {
     </div>
   );
 }
+
+function agoLabel(ts: number): string {
+  const days = Math.floor((Date.now() - ts) / DAY_MS);
+  if (days <= 0) return "heute";
+  if (days === 1) return "gestern";
+  return `vor ${days} Tagen`;
+}
+
+const chip: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 600, color: TOK.muted,
+  background: TOK.surface2, borderRadius: 999, padding: "4px 10px", letterSpacing: "0.01em",
+};
 
 const linkBtn: React.CSSProperties = {
   display: "flex", alignItems: "center", gap: 2, background: "transparent", border: "none",
