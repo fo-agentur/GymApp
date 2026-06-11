@@ -75,7 +75,10 @@ export default function Workout() {
   const [pickerMode, setPickerMode] = React.useState<"add" | "swap" | null>(null);
   const [finishing, setFinishing] = React.useState(false);
   const [ready, setReady] = React.useState(false);
-  const [restTimer, setRestTimer] = React.useState<{ total: number; remaining: number } | null>(null);
+  // endsAt is a wall-clock timestamp (Date.now()) so the countdown stays
+  // correct while iOS suspends JS timers in a backgrounded PWA; remaining is
+  // derived from it on every tick and on wake.
+  const [restTimer, setRestTimer] = React.useState<{ total: number; endsAt: number; remaining: number } | null>(null);
   const [recentIds, setRecentIds] = React.useState<string[]>([]);
   const [completed, setCompleted] = React.useState<{
     prs: { name: string; weight: number }[];
@@ -176,12 +179,26 @@ export default function Workout() {
     return { key: uid(), exerciseId: ex.id, name: ex.name, muscle: ex.primary_muscle, category: ex.category, image, last, targetReps: loMin === loMax ? `${loMin}` : `${loMin}–${loMax}`, priorBest1rm, rest: rest ?? defaultRestRef.current, suggestion, sets };
   }
 
+  // Elapsed clock, anchored to a wall-clock start so backgrounding the PWA
+  // (lock screen, app switch) never loses time.
+  const startTsRef = React.useRef<number>(Date.now());
   React.useEffect(() => {
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(t);
+    const sync = () => setElapsed(Math.max(0, Math.floor((Date.now() - startTsRef.current) / 1000)));
+    sync();
+    const t = setInterval(sync, 1000);
+    window.addEventListener("focus", sync);
+    window.addEventListener("pageshow", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("pageshow", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
   }, []);
 
-  // Rest countdown.
+  // Rest countdown — remaining is always recomputed from endsAt, never
+  // decremented, so a frozen interval can't make the timer drift.
   React.useEffect(() => {
     if (!restTimer) return;
     if (restTimer.remaining <= 0) {
@@ -189,15 +206,32 @@ export default function Workout() {
       const t = setTimeout(() => setRestTimer(null), 4000);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setRestTimer((r) => (r ? { ...r, remaining: r.remaining - 1 } : r)), 1000);
-    return () => clearTimeout(t);
+    const sync = () =>
+      setRestTimer((r) => {
+        if (!r) return r;
+        const remaining = Math.max(0, Math.ceil((r.endsAt - Date.now()) / 1000));
+        return remaining === r.remaining ? r : { ...r, remaining };
+      });
+    // Fire just after the next whole-second boundary so the display ticks cleanly.
+    const untilNextTick = ((restTimer.endsAt - Date.now()) % 1000 + 1000) % 1000 || 1000;
+    const t = setTimeout(sync, Math.max(50, untilNextTick));
+    window.addEventListener("focus", sync);
+    window.addEventListener("pageshow", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("pageshow", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
   }, [restTimer]);
 
   function adjustRest(delta: number) {
     setRestTimer((r) => {
       if (!r) return r;
-      const remaining = Math.max(0, r.remaining + delta);
-      return { total: Math.max(r.total, remaining), remaining };
+      const endsAt = Math.max(Date.now(), r.endsAt + delta * 1000);
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      return { total: Math.max(r.total, remaining), endsAt, remaining };
     });
   }
 
@@ -290,7 +324,7 @@ export default function Workout() {
         partial_reps: set.partials,
       });
       patchSet(setId, { weight, reps, rir, status: "done", dbId: row.id });
-      if (!isWarm) setRestTimer({ total: ex.rest, remaining: ex.rest });
+      if (!isWarm) setRestTimer({ total: ex.rest, endsAt: Date.now() + ex.rest * 1000, remaining: ex.rest });
     } catch (err) {
       alert("Satz konnte nicht gespeichert werden: " + (err as Error).message);
       return;
