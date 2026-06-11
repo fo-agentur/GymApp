@@ -3,14 +3,22 @@ import React from "react";
 import { useApp } from "../app-context";
 import { fetchProfile, updateProfile } from "@/lib/data";
 import { EQUIPMENT_OPTIONS, parseEquipment, type EquipmentId } from "@/lib/equipment";
-import { TOK, TYPE, ScreenHeader, SectionHeader, Card, Row, Divider, MiniStepper, Tnum, I } from "@/lib/design";
+import { applyTheme, storedTheme, normalizeTheme, type ThemePref } from "@/lib/theme";
+import { TOK, TYPE, ScreenHeader, SectionHeader, Card, Row, Divider, MiniStepper, Segmented, Tnum, I } from "@/lib/design";
 
 export default function Settings() {
   const { db, userId, accent, goBack, reloadProfile } = useApp();
   const [bar, setBar] = React.useState(20);
   const [rest, setRest] = React.useState(120);
   const [equipment, setEquipment] = React.useState<EquipmentId[]>([]);
+  // init in an effect (not the initializer) — localStorage is unavailable
+  // during SSR and a mismatch would trip hydration.
+  const [theme, setTheme] = React.useState<ThemePref>("system");
   const [saved, setSaved] = React.useState(false);
+
+  React.useEffect(() => {
+    setTheme(storedTheme());
+  }, []);
 
   React.useEffect(() => {
     (async () => {
@@ -19,11 +27,20 @@ export default function Settings() {
         setBar(Number(p.bar_weight_kg));
         setRest(p.default_rest_seconds);
         setEquipment(parseEquipment(p.equipment));
+        // theme stays device-local (localStorage): legacy profiles all hold the
+        // old default 'dark' although nobody ever chose it.
       }
     })();
   }, [db, userId]);
 
-  async function persist(patch: { bar_weight_kg?: number; default_rest_seconds?: number; equipment?: { items: EquipmentId[] } }) {
+  function changeTheme(v: string) {
+    const pref = normalizeTheme(v);
+    setTheme(pref);
+    applyTheme(pref); // instant + localStorage
+    persist({ theme: pref });
+  }
+
+  async function persist(patch: { bar_weight_kg?: number; default_rest_seconds?: number; equipment?: { items: EquipmentId[] }; theme?: string }) {
     try {
       await updateProfile(db, userId, patch);
       if (patch.equipment) await reloadProfile();
@@ -71,6 +88,28 @@ export default function Settings() {
         })}
       </Card>
 
+      <SectionHeader title="Darstellung" />
+      <Card style={{ margin: "0 12px 20px" }}>
+        <Row
+          label="Design"
+          sublabel="System folgt der Geräte-Einstellung"
+          trailing={
+            <div style={{ minWidth: 196, flexShrink: 0 }}>
+              <Segmented
+                accent={accent}
+                value={theme}
+                onChange={changeTheme}
+                options={[
+                  { value: "light", label: "Hell" },
+                  { value: "dark", label: "Dunkel" },
+                  { value: "system", label: "System" },
+                ]}
+              />
+            </div>
+          }
+        />
+      </Card>
+
       <SectionHeader title="Training" />
       <Card style={{ margin: "0 12px 20px" }}>
         <Row label="Standard-Stangengewicht" sublabel="Für den Scheibenrechner" trailing={<MiniStepper value={bar} min={0} step={2.5} unit="kg" onChange={(v) => { setBar(v); persist({ bar_weight_kg: v }); }} />} />
@@ -80,7 +119,7 @@ export default function Settings() {
 
       <SectionHeader title="App" />
       <Card style={{ margin: "0 12px 20px" }}>
-        <Row label="Version" trailing={<Tnum style={{ color: TOK.dim, fontSize: 13 }}>2.0.0</Tnum>} />
+        <Row label="Version" trailing={<Tnum style={{ color: TOK.dim, fontSize: 13 }}>2.1.0</Tnum>} />
       </Card>
       <div style={{ padding: "0 16px", fontSize: 11.5, color: TOK.dim, lineHeight: 1.5, ...TYPE.caption }}>
         Deine Daten werden pro Benutzer getrennt in der Cloud gespeichert (Supabase, Row Level Security).

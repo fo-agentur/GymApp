@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchExercises, fetchProfile, fetchRoutines, type RoutineFull } from "@/lib/data";
 import type { Exercise } from "@/lib/supabase/types";
 import { parseEquipment, type EquipmentId } from "@/lib/equipment";
+import { watchSystemTheme } from "@/lib/theme";
 import { ACCENT, Phone, TabBar, Sheet, TOK, TYPE, Tnum, I, type TabId } from "@/lib/design";
 import { AppContext, type AppCtxValue, type ScreenId, type ScreenParams, type WorkoutConfig } from "./app-context";
 
@@ -85,6 +86,9 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     reloadExercises();
     reloadProfile();
   }, [reloadExercises, reloadProfile]);
+
+  // "System" theme follows the OS while the app is open.
+  React.useEffect(() => watchSystemTheme(), []);
 
   const exMap = React.useMemo(() => {
     const m: Record<string, Exercise> = {};

@@ -29,6 +29,7 @@
   --c-accent-ink: #ffffff;
   --c-accent-soft: rgba(242, 100, 48, 0.12);
   --c-muscle: #2f6bff;
+  --c-muscle-rgb: 47, 107, 255;
   --c-fail: #e5484d;
   --c-pr: #1f9d52;
   --c-set-warmup: #e08a17;
@@ -66,6 +67,7 @@
   --c-accent-ink: #0a0a0b;
   --c-accent-soft: rgba(242, 104, 60, 0.16);
   --c-muscle: #4d86ff;
+  --c-muscle-rgb: 77, 134, 255;
   --c-fail: #ff5c5c;
   --c-pr: #34d27e;
   --c-set-warmup: #ffb020;

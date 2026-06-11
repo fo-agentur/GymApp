@@ -13,11 +13,12 @@ const NEUTRAL = "var(--c-surface2)";
 const UNWORKED = "var(--c-surface3)";
 
 // Worked muscles glow brand-blue, scaled by weekly set intensity.
+// --c-muscle-rgb adapts the blue per theme (light/dark).
 function heat(sets: number): string {
   const t = intensity(sets);
   if (t <= 0) return UNWORKED;
   const a = 0.3 + 0.7 * t;
-  return `rgba(47, 107, 255, ${a.toFixed(2)})`;
+  return `rgba(var(--c-muscle-rgb), ${a.toFixed(2)})`;
 }
 
 function Figure({

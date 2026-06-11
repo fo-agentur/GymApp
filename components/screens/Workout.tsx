@@ -500,7 +500,7 @@ export default function Workout() {
             {/* Action chips */}
             <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 14px 12px", flexShrink: 0 }}>
               <ActionChip icon={<I.Note size={15} color={TOK.text} />} label="Info" onTap={() => setInfoOpen(true)} />
-              <ActionChip icon={<I.Flame size={15} color={warmActive(current) ? "#fff" : TOK.text} />} label="Aufwärmen" active={warmActive(current)} onTap={() => toggleWarmup()} />
+              <ActionChip icon={<I.Flame size={15} color={warmActive(current) ? "var(--c-bg)" : TOK.text} />} label="Aufwärmen" active={warmActive(current)} onTap={() => toggleWarmup()} />
               <ActionChip icon={<I.Routine size={15} color={TOK.text} />} label="Tauschen" onTap={() => setPickerMode("swap")} />
               <ActionChip icon={<I.Grid size={15} color={TOK.text} />} label="Scheiben" onTap={() => setPlatesOpen(true)} />
             </div>

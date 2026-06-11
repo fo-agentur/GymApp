@@ -194,7 +194,7 @@ export default function Progress() {
                 {/* legend */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 12 }}>
                   <span style={{ fontSize: 10.5, fontWeight: 600, color: TOK.dim }}>wenig</span>
-                  <div style={{ width: 110, height: 7, borderRadius: 4, background: "linear-gradient(to right, var(--c-surface3), rgba(47,107,255,0.45), rgba(47,107,255,1))" }} />
+                  <div style={{ width: 110, height: 7, borderRadius: 4, background: "linear-gradient(to right, var(--c-surface3), rgba(var(--c-muscle-rgb),0.45), rgba(var(--c-muscle-rgb),1))" }} />
                   <span style={{ fontSize: 10.5, fontWeight: 600, color: TOK.dim }}>viel</span>
                 </div>
               </div>
