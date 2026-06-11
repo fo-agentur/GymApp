@@ -4,7 +4,7 @@
 // routines and the most recent sessions.
 import React from "react";
 import { useApp } from "../app-context";
-import { fetchSessions, fetchRoutines, weeklyMuscleSets, type RoutineFull } from "@/lib/data";
+import { fetchSessions, fetchRoutines, weeklyMuscleSets, fetchTodayNutrition, type RoutineFull, type TodayNutrition } from "@/lib/data";
 import type { WorkoutSession } from "@/lib/supabase/types";
 import { TOK, TYPE, Tnum, I, SectionHeader, SessionRow, EmptyState, WeekStrip, fmtVol, hmm } from "@/lib/design";
 import type { MuscleGroup } from "@/lib/muscles";
@@ -18,10 +18,11 @@ function datePill(iso: string) {
 }
 
 export default function Today() {
-  const { db, username, exMap, goto, startWorkout, accent } = useApp();
+  const { db, userId, username, exMap, goto, startWorkout, accent } = useApp();
   const [sessions, setSessions] = React.useState<WorkoutSession[]>([]);
   const [routines, setRoutines] = React.useState<RoutineFull[]>([]);
   const [muscleSets, setMuscleSets] = React.useState<Partial<Record<MuscleGroup, number>>>({});
+  const [nutrition, setNutrition] = React.useState<TodayNutrition | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -41,6 +42,11 @@ export default function Today() {
     if (!Object.keys(exMap).length) return;
     weeklyMuscleSets(db, exMap).then(setMuscleSets).catch(() => {});
   }, [db, exMap]);
+
+  // Compact nutrition summary from the shared DB (logged via the nutrition app).
+  React.useEffect(() => {
+    fetchTodayNutrition(db, userId).then(setNutrition).catch(() => {});
+  }, [db, userId]);
 
   const now = new Date();
   const thisWeek = sessions.filter((s) => now.getTime() - new Date(s.started_at).getTime() < 7 * DAY_MS);
@@ -73,6 +79,11 @@ export default function Today() {
           <WeekStat label="Zeit" value={hmm(weekMins)} />
         </div>
       </div>
+
+      {/* Nutrition snapshot (only when the shared account tracks food) */}
+      {nutrition && (nutrition.entries > 0 || nutrition.targetKcal != null) && (
+        <NutritionWidget n={nutrition} />
+      )}
 
       {/* Muscle snapshot */}
       {anyMuscle && (
@@ -145,6 +156,52 @@ const linkBtn: React.CSSProperties = {
   display: "flex", alignItems: "center", gap: 2, background: "transparent", border: "none",
   cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, color: TOK.dim, padding: 0,
 };
+
+// ── Nutrition widget ────────────────────────────────────────────
+// Compact daily macros from the nutrition app. Read-only on purpose — the
+// gym app stays a workout app, logging happens over there.
+function MacroBar({ label, value, target, unit, color }: { label: string; value: number; target: number | null; unit: string; color: string }) {
+  const pct = target && target > 0 ? Math.min(1, value / target) : 0;
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: TOK.dim }}>{label}</span>
+        <Tnum style={{ fontSize: 13, fontWeight: 700, color: TOK.text, whiteSpace: "nowrap" }}>
+          {value}
+          {target != null && <span style={{ color: TOK.muted, fontWeight: 600 }}> / {target}</span>}
+          <span style={{ fontSize: 10, color: TOK.muted, fontWeight: 600 }}> {unit}</span>
+        </Tnum>
+      </div>
+      <div style={{ height: 5, borderRadius: 3, background: TOK.surface2, marginTop: 6, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${Math.round(pct * 100)}%`, borderRadius: 3, background: color, transition: "width .4s ease" }} />
+      </div>
+    </div>
+  );
+}
+
+function NutritionWidget({ n }: { n: TodayNutrition }) {
+  return (
+    <div style={{ marginTop: 12, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "16px 16px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 9, background: TOK.accentSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <I.Food size={14} color={TOK.accent} />
+          </div>
+          <div style={{ ...TYPE.cardTitle, color: TOK.text }}>Ernährung heute</div>
+        </div>
+        {n.entries === 0 && <span style={{ fontSize: 11, fontWeight: 600, color: TOK.dim }}>Noch nichts geloggt</span>}
+      </div>
+      <div style={{ display: "flex", gap: 14 }}>
+        <MacroBar label="Kalorien" value={n.kcal} target={n.targetKcal} unit="kcal" color={TOK.accent} />
+        <MacroBar label="Protein" value={n.protein} target={n.targetProtein} unit="g" color={TOK.muscle} />
+      </div>
+      <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
+        <MacroBar label="Carbs" value={n.carbs} target={n.targetCarbs} unit="g" color={TOK.muted} />
+        <MacroBar label="Fett" value={n.fat} target={n.targetFat} unit="g" color={TOK.muted} />
+      </div>
+    </div>
+  );
+}
 
 function WeekStat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (

@@ -308,3 +308,43 @@ export async function weeklyMuscleSets(
   }
   return agg as Partial<Record<MuscleGroup, number>>;
 }
+
+// ── Today's nutrition (logged by the nutrition app into the shared DB) ──
+// The gym dashboard only shows a compact summary; logging lives in the
+// nutrition app. logged_on uses the user's local date (same convention the
+// nutrition app writes with).
+export type TodayNutrition = {
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  entries: number;
+  targetKcal: number | null;
+  targetProtein: number | null;
+  targetCarbs: number | null;
+  targetFat: number | null;
+};
+
+export async function fetchTodayNutrition(db: DB, userId: string): Promise<TodayNutrition> {
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const [logs, profile] = await Promise.all([
+    db.from("food_logs").select("kcal,protein_g,carbs_g,fat_g").eq("user_id", userId).eq("logged_on", today),
+    db.from("profiles").select("target_kcal,target_protein_g,target_carbs_g,target_fat_g").eq("id", userId).maybeSingle(),
+  ]);
+  if (logs.error) throw logs.error;
+  const rows = logs.data ?? [];
+  const sum = (key: "kcal" | "protein_g" | "carbs_g" | "fat_g") =>
+    Math.round(rows.reduce((n, r) => n + (Number(r[key]) || 0), 0));
+  return {
+    kcal: sum("kcal"),
+    protein: sum("protein_g"),
+    carbs: sum("carbs_g"),
+    fat: sum("fat_g"),
+    entries: rows.length,
+    targetKcal: profile.data?.target_kcal ?? null,
+    targetProtein: profile.data?.target_protein_g ?? null,
+    targetCarbs: profile.data?.target_carbs_g ?? null,
+    targetFat: profile.data?.target_fat_g ?? null,
+  };
+}
