@@ -27,8 +27,8 @@ export default function Settings() {
         setBar(Number(p.bar_weight_kg));
         setRest(p.default_rest_seconds);
         setEquipment(parseEquipment(p.equipment));
-        // theme stays device-local (localStorage): legacy profiles all hold the
-        // old default 'dark' although nobody ever chose it.
+        // since migration 0008 the server value is trustworthy (default 'system')
+        setTheme(normalizeTheme(p.theme));
       }
     })();
   }, [db, userId]);

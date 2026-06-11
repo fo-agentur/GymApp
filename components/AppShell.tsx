@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchExercises, fetchProfile, fetchRoutines, type RoutineFull } from "@/lib/data";
 import type { Exercise } from "@/lib/supabase/types";
 import { parseEquipment, type EquipmentId } from "@/lib/equipment";
-import { watchSystemTheme } from "@/lib/theme";
+import { applyTheme, normalizeTheme, watchSystemTheme } from "@/lib/theme";
 import { ACCENT, Phone, TabBar, Sheet, TOK, TYPE, Tnum, I, type TabId } from "@/lib/design";
 import { AppContext, type AppCtxValue, type ScreenId, type ScreenParams, type WorkoutConfig } from "./app-context";
 
@@ -77,6 +77,9 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     try {
       const p = await fetchProfile(db, userId);
       setMyEquipment(parseEquipment(p?.equipment));
+      // profiles.theme is the cross-device source of truth (synced since
+      // migration 0008); localStorage only caches it for the pre-paint script.
+      if (p?.theme) applyTheme(normalizeTheme(p.theme));
     } catch {
       /* non-blocking */
     }
