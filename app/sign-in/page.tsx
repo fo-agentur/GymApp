@@ -17,13 +17,22 @@ export default function SignInPage() {
 
   async function submit() {
     setError(null);
-    const uErr = validateUsername(username);
-    if (uErr) return setError(uErr);
+    // Shared accounts with the nutrition app: it signs people up with their
+    // real e-mail address. Anything containing "@" is used as-is, plain
+    // usernames keep mapping to the synthetic @gymapp.local mail.
+    const id = username.trim();
+    const isEmail = id.includes("@");
+    if (isEmail) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id)) return setError("Bitte eine gültige E-Mail-Adresse eingeben.");
+    } else {
+      const uErr = validateUsername(id);
+      if (uErr) return setError(uErr);
+    }
     const pErr = validatePassword(password);
     if (pErr) return setError(pErr);
 
     setBusy(true);
-    const email = usernameToEmail(username);
+    const email = isEmail ? id.toLowerCase() : usernameToEmail(id);
     try {
       if (mode === "signup") {
         const { error } = await db.auth.signUp({ email, password });
@@ -105,11 +114,11 @@ export default function SignInPage() {
                 if (!busy) submit();
               }}
             >
-              <label style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8, display: "block" }}>Benutzername</label>
+              <label style={{ ...TYPE.col, color: TOK.dim, marginBottom: 8, display: "block" }}>Benutzername oder E-Mail</label>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="deinname"
+                placeholder="deinname oder du@mail.de"
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
@@ -165,9 +174,9 @@ export default function SignInPage() {
 
 function humanError(msg: string): string {
   const m = msg.toLowerCase();
-  if (m.includes("invalid login")) return "Benutzername oder Passwort falsch.";
+  if (m.includes("invalid login")) return "Benutzername/E-Mail oder Passwort falsch.";
   if (m.includes("already registered") || m.includes("already been registered"))
-    return "Dieser Benutzername ist vergeben. Versuch dich anzumelden.";
+    return "Dieses Konto existiert bereits. Versuch dich anzumelden.";
   if (m.includes("not confirmed")) return "E-Mail-Bestätigung ist aktiv — bitte den Admin, sie auszuschalten.";
   return msg;
 }
