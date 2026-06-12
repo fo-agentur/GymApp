@@ -6,6 +6,7 @@ import { guideFor } from "@/lib/exercise-guide";
 import { loadExerciseDB, type ExInfo } from "@/lib/exercise-db";
 import { deMuscle } from "@/lib/muscles";
 import { deCategory } from "@/lib/equipment";
+import { targetsFor, targetLabel } from "@/lib/targets";
 
 type ExSet = {
   id: string;
@@ -81,6 +82,7 @@ export default function ExerciseDetail() {
   }
 
   const guide = guideFor(ex.name);
+  const targets = targetsFor(ex.name, ex.primary_muscle, info?.primary);
   const chartData = [...groups].reverse().filter((g) => g.e1rm > 0).map((g, i) => ({ x: i, y: g.e1rm }));
 
   return (
@@ -89,7 +91,11 @@ export default function ExerciseDetail() {
       <div style={{ padding: "0 16px 16px" }}>
         <div style={{ ...TYPE.h1, color: TOK.text }}>{ex.name}</div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-          <span style={tag}>{deMuscle(ex.primary_muscle)}</span>
+          {/* Fine-grained target regions (Latissimus, Trapez, …) with the
+              coarse group as fallback, then secondary muscles + equipment. */}
+          {(targets.length ? targets.map(targetLabel) : [deMuscle(ex.primary_muscle)]).map((t) => (
+            <span key={t} style={{ ...tag, background: `${accent.hex}1a`, color: accent.hex }}>{t}</span>
+          ))}
           {(info?.secondary ?? guide?.secondary ?? []).map((m) => (
             <span key={m} style={{ ...tag, color: TOK.dim }}>{deMuscle(m)}</span>
           ))}

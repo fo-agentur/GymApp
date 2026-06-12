@@ -35,8 +35,12 @@ Repo: https://github.com/fo-agentur/GymApp · UI language: **German**.
 - **Statistik**: "Muskeln" = body heatmap (front/back SVG, working sets last
   7 days, per-muscle breakdown) · "Verlauf" = sets/volume bars over
   1W…Alle + top exercises.
-- **Exercise library**: 873 exercises, search + muscle/equipment chips,
-  relevance-ranked (core lifts first), collapsed groups, custom exercises.
+- **Exercise library**: 883 exercises, search (German-synonym aware: "Rudern"
+  → row, "Latzug" → pulldown; see `lib/targets.ts`) + muscle/equipment chips,
+  fine-grained target filter per group (Latissimus, oberer Rücken, Trapez,
+  hintere Schulter, … — client-side layer over the 11 coarse DB groups, which
+  the heatmap keeps using), relevance-ranked (core lifts first), collapsed
+  groups, custom exercises.
 - **Equipment profiles** (`lib/equipment.ts`, stored in `profiles.equipment`
   as `{ items: EquipmentId[] }`): `multipress` (Atletica Multipresse = smith
   machine + cable + bench), `dumbbell`, `barbell`, `machines`, `full_gym`.
@@ -71,7 +75,7 @@ When adding a screen: add the `ScreenId`, a `case` in `AppShell`, and a
 - Project ref `aiptokxagqthzhpmtjyk` (free tier — pauses when idle;
   `restore_project` and wait for `ACTIVE_HEALTHY` before SQL). Managed via the
   **Supabase MCP connector**, not the CLI.
-- Active tables: `profiles`, `exercises` (873 global rows with
+- Active tables: `profiles`, `exercises` (883 global rows with
   `user_id IS NULL` + per-user custom), `routines`, `routine_exercises`,
   `workout_sessions`, `sets`. All RLS-scoped to `auth.uid()`.
 - Legacy tables from v1 (foods, food_logs, weight_logs, programs, …) still

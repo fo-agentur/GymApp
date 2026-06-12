@@ -1,8 +1,13 @@
-// Transforms the free-exercise-db dump into (a) a Supabase seed statement and
-// (b) a bundled guide file (instructions + image + muscles) read at runtime.
+// Transforms the free-exercise-db dump (+ curated extras) into (a) a Supabase
+// seed statement and (b) a bundled guide file (instructions + image + muscles)
+// read at runtime. The raw fine-grained primary muscle (lats, middle back,
+// traps, …) is kept in the guide as `primary` — lib/targets.ts uses it to
+// classify exercises into the app's fine-grained target regions.
 import fs from "node:fs";
+import { EXTRA_EXERCISES } from "./extra-exercises.mjs";
 
-const ex = JSON.parse(fs.readFileSync(new URL("../exdb.json", import.meta.url)));
+const dump = JSON.parse(fs.readFileSync(new URL("../exdb.json", import.meta.url)));
+const ex = [...dump, ...EXTRA_EXERCISES];
 
 const MUSCLE = {
   chest: "Chest",
@@ -35,13 +40,15 @@ for (const e of ex) {
   const name = e.name.trim();
   if (seen.has(name)) continue;
   seen.add(name);
-  const primary = mus((e.primaryMuscles || [])[0]);
+  const raw = (e.primaryMuscles || [])[0] || null;
+  const primary = mus(raw);
   const category = cat(e.equipment);
   rows.push({ n: name, c: category, m: primary });
   const secondary = [...new Set((e.secondaryMuscles || []).map(mus))];
   guide[name] = {
     steps: e.instructions || [],
     image: (e.images && e.images[0]) ? BASE + e.images[0] : null,
+    primary: raw,
     secondary,
     equipment: e.equipment || category,
     level: e.level || null,

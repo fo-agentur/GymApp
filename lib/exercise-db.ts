@@ -5,6 +5,9 @@
 export type ExInfo = {
   steps: string[];
   image: string | null;
+  // Raw fine-grained primary muscle from the source dataset (e.g. "lats",
+  // "middle back", "traps") — feeds the target classifier in lib/targets.ts.
+  primary?: string | null;
   secondary: string[];
   equipment: string;
   level: string | null;

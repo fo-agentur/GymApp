@@ -1,23 +1,23 @@
 "use client";
 // ExercisePicker — shared exercise browser for the library, the routine editor
-// and the active workout. Search + muscle/equipment filters, a "my equipment"
-// toggle fed by the profile, relevance-ranked results (core lifts first) and
-// collapsed groups so the 870-entry database stays scannable.
+// and the active workout. Search (German synonym aware), muscle group +
+// fine-grained target filters, equipment chips, a "my equipment" toggle fed by
+// the profile, relevance-ranked results (core lifts first) and collapsed
+// groups so the 880-entry database stays scannable.
 import React from "react";
 import type { Exercise } from "@/lib/supabase/types";
 import { TOK, Chip, SectionHeader, ExerciseRow, I, type Accent } from "@/lib/design";
 import { MUSCLE_GROUPS, deMuscle } from "@/lib/muscles";
 import { deCategory, matchesEquipment, relevanceScore, type EquipmentId } from "@/lib/equipment";
 import { loadExerciseDB, type ExInfo } from "@/lib/exercise-db";
+import { targetsFor, targetsForGroup, targetLabel, normSearch, matchesQuery, type TargetId } from "@/lib/targets";
 
 const EQUIPMENT_CATEGORIES = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
 export const MUSCLE_ORDER = [...MUSCLE_GROUPS];
 
 const COLLAPSED_COUNT = 6;
 
-function norm(s: string) {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-}
+type ExMeta = { targets: TargetId[]; haystack: string };
 
 export default function ExercisePicker({
   exercises,
@@ -37,7 +37,8 @@ export default function ExercisePicker({
 }) {
   const hasEquipmentProfile = myEquipment.length > 0 && !myEquipment.includes("full_gym");
   const [query, setQuery] = React.useState("");
-  const [muscle, setMuscle] = React.useState("All");
+  const [muscle, setMuscleRaw] = React.useState("All");
+  const [target, setTarget] = React.useState<TargetId | null>(null);
   const [cat, setCat] = React.useState("All");
   const [mineOnly, setMineOnly] = React.useState(hasEquipmentProfile);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
@@ -47,20 +48,51 @@ export default function ExercisePicker({
     loadExerciseDB().then(setImages).catch(() => {});
   }, []);
 
-  const tokens = norm(query).split(/\s+/).filter(Boolean);
+  // Switching the muscle group clears the fine target — its chips belong to
+  // the previous group.
+  const setMuscle = (m: string) => {
+    setMuscleRaw(m);
+    setTarget(null);
+  };
+
+  // Per-exercise fine targets + searchable text (name, German muscle/target/
+  // equipment labels), computed once per data load.
+  const meta = React.useMemo(() => {
+    const map = new Map<string, ExMeta>();
+    for (const e of exercises) {
+      const info = images[e.name];
+      const targets = targetsFor(e.name, e.primary_muscle, info?.primary);
+      const name = normSearch(e.name);
+      // The unspaced name variant lets "t-bar" or "pull ups" match via the
+      // joined-token check in matchesQuery.
+      const haystack = [name, name.replace(/ /g, ""), normSearch([deMuscle(e.primary_muscle), ...targets.map(targetLabel), deCategory(e.category), info?.equipment ?? ""].join(" "))].join(" ");
+      map.set(e.id, { targets, haystack });
+    }
+    return map;
+  }, [exercises, images]);
+
+  const tokens = normSearch(query).split(/\s+/).filter(Boolean);
   const filtered = exercises.filter((e) => {
-    if (muscle !== "All" && e.primary_muscle !== muscle) return false;
+    const m = meta.get(e.id);
+    // A selected target replaces the coarse group check, so multi-group
+    // movements surface too (e.g. Face Pulls under Rücken → Hintere Schulter).
+    if (target) {
+      if (!m || !m.targets.includes(target)) return false;
+    } else if (muscle !== "All" && e.primary_muscle !== muscle) return false;
     if (cat !== "All" && e.category !== cat) return false;
     if (mineOnly && !matchesEquipment(e, myEquipment)) return false;
-    if (tokens.length) {
-      const n = norm(e.name);
-      if (!tokens.every((t) => n.includes(t))) return false;
-    }
+    if (tokens.length && !matchesQuery(m?.haystack ?? normSearch(e.name), tokens)) return false;
     return true;
   });
 
+  // When searching, names that start with the query rank above mere matches.
+  const startBoost = (e: Exercise) => {
+    if (!tokens.length) return 0;
+    const n = normSearch(e.name);
+    return n.startsWith(tokens[0]) || n.replace(/ /g, "").startsWith(tokens.join("")) ? 100 : 0;
+  };
   const byScore = (a: Exercise, b: Exercise) =>
-    relevanceScore(b) - relevanceScore(a) || a.name.localeCompare(b.name);
+    startBoost(b) + relevanceScore(b) - (startBoost(a) + relevanceScore(a)) || a.name.localeCompare(b.name);
 
   const showRecent = recentIds.length > 0 && !query && muscle === "All" && cat === "All";
   const recent = showRecent
@@ -70,27 +102,31 @@ export default function ExercisePicker({
         .slice(0, 6)
     : [];
 
-  // Single-muscle view: flat ranked list. Otherwise group by muscle, each group
-  // collapsed to the most relevant entries.
+  // Single-muscle/target view: flat ranked list. Otherwise group by muscle,
+  // each group collapsed to the most relevant entries.
   const grouped =
-    muscle === "All"
+    muscle === "All" && !target
       ? MUSCLE_ORDER.map((m) => ({ muscle: m as string, items: filtered.filter((e) => e.primary_muscle === m).sort(byScore) })).filter((g) => g.items.length > 0)
       : [{ muscle, items: [...filtered].sort(byScore) }];
 
-  const filtering = muscle !== "All" || cat !== "All" || tokens.length > 0;
+  const filtering = muscle !== "All" || cat !== "All" || tokens.length > 0 || !!target;
+  const groupTargets = muscle !== "All" ? targetsForGroup(muscle) : [];
 
   const trailing = variant === "add" ? <I.Plus size={16} color={accent.hex} w={2.5} /> : <I.ChevR size={14} color={TOK.dim} />;
-  const row = (e: Exercise) => (
-    <ExerciseRow
-      key={e.id}
-      name={e.name}
-      img={images[e.name]?.image ?? null}
-      muscle={deMuscle(e.primary_muscle)}
-      equipment={deCategory(e.category)}
-      onTap={() => onPick(e)}
-      trailing={trailing}
-    />
-  );
+  const row = (e: Exercise) => {
+    const t = meta.get(e.id)?.targets ?? [];
+    return (
+      <ExerciseRow
+        key={e.id}
+        name={e.name}
+        img={images[e.name]?.image ?? null}
+        muscle={t.length ? targetLabel(t[0]) : deMuscle(e.primary_muscle)}
+        equipment={deCategory(e.category)}
+        onTap={() => onPick(e)}
+        trailing={trailing}
+      />
+    );
+  };
 
   return (
     <div>
@@ -101,7 +137,7 @@ export default function ExercisePicker({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Übung suchen…"
+            placeholder="Übung suchen… (auch „Rudern“, „Latzug“)"
             autoCapitalize="none"
             style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: TOK.text, fontFamily: "inherit", fontSize: 16, fontWeight: 500 }}
           />
@@ -122,6 +158,18 @@ export default function ExercisePicker({
           </Chip>
         ))}
       </div>
+
+      {/* Fine targets within the selected group (Lat, oberer Rücken, Trapez, …) */}
+      {groupTargets.length > 0 && (
+        <div style={{ padding: "0 16px 8px", display: "flex", gap: 6, overflowX: "auto" }}>
+          <Chip accent={accent} selected={target === null} onClick={() => setTarget(null)}>Alle Bereiche</Chip>
+          {groupTargets.map((t) => (
+            <Chip key={t.id} accent={accent} selected={target === t.id} onClick={() => setTarget(target === t.id ? null : t.id)}>
+              {t.label}
+            </Chip>
+          ))}
+        </div>
+      )}
 
       {/* Equipment chips — secondary refinement */}
       <div style={{ padding: "0 16px 10px", display: "flex", gap: 6, overflowX: "auto" }}>
@@ -160,17 +208,23 @@ export default function ExercisePicker({
       {filtering && (
         <div style={{ padding: "2px 16px 4px", fontSize: 11, color: TOK.dim }}>
           {filtered.length} {filtered.length === 1 ? "Übung" : "Übungen"}
+          {target ? ` · ${targetLabel(target)}` : ""}
         </div>
       )}
 
       {/* Grouped / flat list */}
       {grouped.map((g) => {
-        const isOpen = expanded.has(g.muscle) || tokens.length > 0 || muscle !== "All";
+        const isOpen = expanded.has(g.muscle) || tokens.length > 0 || muscle !== "All" || !!target;
         const items = isOpen ? g.items : g.items.slice(0, COLLAPSED_COUNT);
         const hidden = g.items.length - items.length;
         return (
           <div key={g.muscle}>
-            {muscle === "All" && <SectionHeader title={deMuscle(g.muscle)} style={{ padding: "10px 16px 4px" }} />}
+            {muscle === "All" && !target && (
+              <SectionHeader
+                title={<>{deMuscle(g.muscle)} <span style={{ color: TOK.dim, fontWeight: 500 }}>· {g.items.length}</span></>}
+                style={{ padding: "10px 16px 4px" }}
+              />
+            )}
             {items.map(row)}
             {hidden > 0 && (
               <button
