@@ -121,13 +121,30 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     setStack([{ screen: TAB_TO_SCREEN[t], params: {} }]);
   }, []);
 
+  const [pausedWorkout, setPausedWorkout] = React.useState<WorkoutConfig | null>(null);
+
   const startWorkout = React.useCallback((cfg: WorkoutConfig) => {
     setQuickAdd(false);
+    setPausedWorkout(null);
     setWorkoutConfig(cfg);
   }, []);
 
+  // Hide the overlay and return to normal navigation without ending the
+  // session — Supabase row and the localStorage snapshot are untouched, so
+  // this can happen any number of times.
+  const minimizeWorkout = React.useCallback(() => {
+    setPausedWorkout(workoutConfig);
+    setWorkoutConfig(null);
+  }, [workoutConfig]);
+
+  const resumeWorkout = React.useCallback(() => {
+    setWorkoutConfig(pausedWorkout);
+    setPausedWorkout(null);
+  }, [pausedWorkout]);
+
   const endWorkout = React.useCallback((dest: "today" | "history") => {
     setWorkoutConfig(null);
+    setPausedWorkout(null);
     setStack(
       dest === "history"
         ? [{ screen: "today", params: {} }, { screen: "history", params: {} }]
@@ -155,6 +172,9 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     startWorkout,
     endWorkout,
     workoutConfig,
+    pausedWorkout,
+    minimizeWorkout,
+    resumeWorkout,
     reloadExercises,
     reloadProfile,
     signOut,
@@ -206,6 +226,7 @@ export default function AppShell({ userId, username }: { userId: string; usernam
               goto={goto}
               startWorkout={startWorkout}
             />
+            {pausedWorkout && <PausedWorkoutBar name={pausedWorkout.name ?? "Workout"} onResume={resumeWorkout} />}
           </Phone>
         )}
       </div>
@@ -262,6 +283,29 @@ function QuickStartSheet({
         />
       </div>
     </Sheet>
+  );
+}
+
+// Persistent pill above the tab bar whenever a workout is paused (not
+// ended) — visible on every screen so you can jump back in from wherever
+// you wandered off to, as many times as you want.
+function PausedWorkoutBar({ name, onResume }: { name: string; onResume: () => void }) {
+  return (
+    <button onClick={onResume} className="gym-glow" style={{
+      position: "absolute", left: 12, right: 12, bottom: 100, zIndex: 45, height: 56, borderRadius: 16,
+      background: TOK.text, color: "var(--c-bg)", border: "none", cursor: "pointer", fontFamily: "inherit",
+      display: "flex", alignItems: "center", gap: 12, padding: "0 16px", WebkitTapHighlightColor: "transparent",
+      boxShadow: `0 14px 30px ${TOK.shadow}`,
+    }}>
+      <span style={{ width: 10, height: 10, borderRadius: 999, background: "var(--c-primary)", flexShrink: 0 }} />
+      <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.6 }}>Pausiert</div>
+        <div style={{ ...TYPE.bodyEm, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+        Fortsetzen <I.ArrowR size={15} color="var(--c-bg)" />
+      </span>
+    </button>
   );
 }
 

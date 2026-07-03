@@ -64,7 +64,7 @@ const uid = () => `l${++counter}`;
 type Focus = { setId: string; field: "weight" | "reps" | "rir" } | null;
 
 export default function Workout() {
-  const { db, userId, accent, exMap, exercises, workoutConfig, endWorkout, myEquipment } = useApp();
+  const { db, userId, accent, exMap, exercises, workoutConfig, endWorkout, minimizeWorkout, myEquipment } = useApp();
   // Only `.id` is ever used off the session row — a minimal local shape lets
   // a resumed session be reconstructed without refetching it from Supabase.
   const [session, setSession] = React.useState<{ id: string } | null>(null);
@@ -544,9 +544,11 @@ export default function Workout() {
     <>
       <PhoneStatus />
       <div className="phone-scroll-area" style={{ position: "absolute", inset: "47px 0 0 0", display: "flex", flexDirection: "column", background: TOK.bg }}>
-        {/* Top bar: exit · elapsed · rest */}
+        {/* Top bar: pause · elapsed · rest. The chevron only pauses — it never
+            ends or discards anything, so it's always safe to tap and you can
+            jump back in as many times as you like via the paused-workout bar. */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px 6px 10px" }}>
-          <button onClick={exitWorkout} style={{ ...iconBtn }} aria-label="Beenden">
+          <button onClick={minimizeWorkout} style={{ ...iconBtn }} aria-label="Pausieren">
             <I.ChevL size={22} color={TOK.text} />
           </button>
           <Tnum style={{ ...TYPE.mega, fontSize: 20, color: TOK.text }}>{hhmmss(elapsed)}</Tnum>
@@ -604,6 +606,7 @@ export default function Workout() {
               <ActionChip icon={<I.Flame size={15} color={warmActive(current) ? "var(--c-bg)" : TOK.text} />} label="Aufwärmen" active={warmActive(current)} onTap={() => toggleWarmup()} />
               <ActionChip icon={<I.Routine size={15} color={TOK.text} />} label="Tauschen" onTap={() => setPickerMode("swap")} />
               <ActionChip icon={<I.Grid size={15} color={TOK.text} />} label="Scheiben" onTap={() => setPlatesOpen(true)} />
+              <ActionChip icon={<I.X size={15} color="var(--c-fail)" />} label="Beenden" onTap={() => exitWorkout()} />
             </div>
 
             {/* Set table */}

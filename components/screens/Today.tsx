@@ -6,7 +6,7 @@ import React from "react";
 import { useApp } from "../app-context";
 import { fetchSessions, fetchRoutines, weeklyMuscleSets, fetchTodayNutrition, type RoutineFull, type TodayNutrition } from "@/lib/data";
 import type { WorkoutSession } from "@/lib/supabase/types";
-import { TOK, TYPE, Tnum, I, SectionHeader, SessionRow, EmptyState, WeekStrip, fmtVol, hmm } from "@/lib/design";
+import { TOK, TYPE, Tnum, I, Btn, SectionHeader, SessionRow, EmptyState, WeekStrip, fmtVol, hmm } from "@/lib/design";
 import { deMuscle, type MuscleGroup } from "@/lib/muscles";
 import MuscleMap from "../MuscleMap";
 
@@ -109,26 +109,30 @@ export default function Today() {
               <Tnum>{hmm(Math.round((heroLastSession.duration_seconds ?? 0) / 60))}</Tnum>
             </div>
           )}
-          <button
+          <Btn
+            variant="primary" size="lg" full accent={accent}
             onClick={() => startWorkout({ routineId: hero.id, name: hero.name })}
-            style={{ width: "100%", height: 48, marginTop: 14, borderRadius: 14, background: accent.hex, color: accent.ink, border: "none", fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, WebkitTapHighlightColor: "transparent" }}
+            style={{ marginTop: 14 }}
+            trailIcon={<I.ArrowR size={16} color={accent.ink} />}
           >
-            Training starten <I.ArrowR size={15} color={accent.ink} />
-          </button>
+            Training starten
+          </Btn>
         </div>
       )}
 
-      {/* This week */}
-      <div style={{ marginTop: 16, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "18px 16px 16px" }}>
+      {/* This week — mega-number strip instead of boxed stat tiles */}
+      <div style={{ marginTop: 16, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, padding: "18px 16px 16px" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
           <div style={{ ...TYPE.cardTitle, color: TOK.text }}>Diese Woche</div>
           <Tnum style={{ fontSize: 12, color: TOK.dim }}>{thisWeek.length} {thisWeek.length === 1 ? "Workout" : "Workouts"}</Tnum>
         </div>
         <WeekStrip trained={trainedDays} accent={accent} />
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <WeekStat label="Sätze" value={String(weekSets)} />
-          <WeekStat label="Volumen" value={fmtVol(weekVolume)} unit="kg" />
-          <WeekStat label="Zeit" value={hmm(weekMins)} />
+        <div style={{ display: "flex", marginTop: 18, background: TOK.bg, borderRadius: 12, padding: "14px 4px" }}>
+          <MegaStat label="Sätze" value={String(weekSets)} />
+          <div style={{ width: 1, background: TOK.border, margin: "2px 0" }} />
+          <MegaStat label="Volumen" value={fmtVol(weekVolume)} unit="kg" />
+          <div style={{ width: 1, background: TOK.border, margin: "2px 0" }} />
+          <MegaStat label="Zeit" value={hmm(weekMins)} />
         </div>
       </div>
 
@@ -274,14 +278,14 @@ function NutritionWidget({ n }: { n: TodayNutrition }) {
   );
 }
 
-function WeekStat({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function MegaStat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
-    <div style={{ flex: 1, background: TOK.surface2, borderRadius: 12, padding: "10px 12px" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
-        <Tnum style={{ fontSize: 18, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em" }}>{value}</Tnum>
+    <div style={{ flex: 1, textAlign: "center" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3 }}>
+        <Tnum style={{ ...TYPE.mega, fontSize: 26, color: TOK.text }}>{value}</Tnum>
         {unit && <span style={{ fontSize: 11, color: TOK.muted, fontWeight: 600 }}>{unit}</span>}
       </div>
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: TOK.dim, marginTop: 3 }}>{label}</div>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: TOK.dim, marginTop: 4 }}>{label}</div>
     </div>
   );
 }

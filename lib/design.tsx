@@ -173,18 +173,24 @@ export function Btn({
   disabled?: boolean; type?: "button" | "submit";
 }) {
   const h = size === "lg" ? 56 : size === "sm" ? 32 : 44;
-  const fs = size === "lg" ? 16 : size === "sm" ? 12 : 14;
+  const fs = size === "lg" ? 15 : size === "sm" ? 12 : 14;
   let bg = "transparent", fg = TOK.text, br = "none";
   if (variant === "primary") { bg = accent.hex; fg = accent.ink; }
   if (variant === "secondary") { bg = TOK.surface2; fg = TOK.text; }
   if (variant === "ghost") { fg = TOK.muted; }
-  if (variant === "outline") { fg = TOK.text; br = `1px solid ${TOK.border}`; }
+  if (variant === "outline") { fg = TOK.text; br = `1.5px solid ${TOK.border}`; }
   if (variant === "danger") { fg = TOK.fail; }
+  // Big CTAs get the impact face, uppercase — every "Training starten" /
+  // "Workout beenden" / "Anmelden" in the app reads as a poster headline
+  // instead of a generic semibold label.
+  const font = size === "lg" ? FONT_IMPACT : "inherit";
+  const weight = size === "lg" ? 400 : 600;
+  const tracking = size === "lg" ? "0.02em" : "-0.01em";
   return (
     <button type={type} onClick={onClick} disabled={disabled} style={{
-      width: full ? "100%" : undefined, height: h, padding: "0 16px", borderRadius: 14,
-      background: bg, color: fg, border: br, fontSize: fs, fontWeight: 600, letterSpacing: "-0.01em",
-      fontFamily: "inherit", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1,
+      width: full ? "100%" : undefined, height: h, padding: "0 18px", borderRadius: 12,
+      background: bg, color: fg, border: br, fontSize: fs, fontWeight: weight, letterSpacing: tracking,
+      fontFamily: font, textTransform: size === "lg" ? "uppercase" : "none", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1,
       display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
       WebkitTapHighlightColor: "transparent", ...style,
     }}>
@@ -427,8 +433,13 @@ export function Row({ label, sublabel, trailing, onTap, chevron, danger }: { lab
   );
 }
 
-export function Card({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 18, overflow: "hidden", ...style }}>{children}</div>;
+export function Card({ children, style, accentBar }: { children?: React.ReactNode; style?: React.CSSProperties; accentBar?: string }) {
+  return (
+    <div style={{ position: "relative", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 16, overflow: "hidden", ...style }}>
+      {accentBar && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: accentBar }} />}
+      {children}
+    </div>
+  );
 }
 export function Divider() {
   return <div style={{ height: 1, background: TOK.border, margin: "0 16px" }} />;
@@ -487,9 +498,9 @@ export function WeekStrip({ trained, accent = ACCENT }: { trained: Set<string>; 
         const future = d.getTime() > today.getTime() && !isToday;
         return (
           <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: isToday ? accent.hex : TOK.dim }}>{l}</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: isToday ? accent.hex : TOK.dim }}>{l}</span>
             <div style={{
-              width: 28, height: 28, borderRadius: 999,
+              width: "100%", maxWidth: 34, height: 34, borderRadius: 10,
               background: done ? accent.hex : TOK.surface2,
               border: isToday ? `1.5px solid ${accent.hex}` : "1.5px solid transparent",
               opacity: future ? 0.35 : 1,
@@ -552,33 +563,38 @@ export function TabBar({ active, onChange, onAdd, addOpen, accent = ACCENT }: { 
     const sel = active === t.id;
     return (
       <button key={t.id} onClick={() => onChange?.(t.id)} style={{
-        flex: 1, height: 64, paddingTop: 11, background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit",
-        display: "flex", flexDirection: "column", alignItems: "center", gap: 5, color: sel ? TOK.text : TOK.dim, WebkitTapHighlightColor: "transparent",
+        position: "relative", flex: 1, height: "100%", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, color: sel ? TOK.text : TOK.dim, WebkitTapHighlightColor: "transparent",
       }}>
         <t.icon size={20} color={sel ? TOK.text : TOK.dim} w={sel ? 2.25 : 1.75} />
-        <span style={{ fontSize: 10, fontWeight: sel ? 600 : 500, letterSpacing: "-0.01em" }}>{t.label}</span>
+        <span style={{ fontSize: 10, fontWeight: sel ? 700 : 500, letterSpacing: "-0.01em" }}>{t.label}</span>
+        {sel && <span style={{ position: "absolute", bottom: 6, width: 4, height: 4, borderRadius: 999, background: "var(--c-primary)" }} />}
       </button>
     );
   };
   return (
     // position:relative + zIndex keep the protruding + above screen content
-    // (pinned start buttons, FABs) so it is never clipped or covered.
-    <div className="phone-tabbar" style={{ position: "relative", zIndex: 55, flexShrink: 0, borderTop: `1px solid ${TOK.border}`, background: TOK.surface, height: 64 + 24, paddingBottom: 24, display: "flex", alignItems: "flex-start" }}>
-      {tabBtn(tabs[0])}
-      {tabBtn(tabs[1])}
-      {/* center add FAB */}
-      <div style={{ width: 70, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 12 }}>
-        <button onClick={onAdd} aria-label={addOpen ? "Schließen" : "Hinzufügen"} style={{
-          width: 54, height: 54, borderRadius: 999, background: accent.hex, color: accent.ink, border: "none", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", marginTop: -20,
-          boxShadow: `0 10px 26px ${TOK.shadow}, 0 0 20px var(--c-shadow-glow), 0 3px 8px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
-          transform: addOpen ? "rotate(45deg)" : "rotate(0deg)", transition: "transform 220ms cubic-bezier(0.22,1,0.36,1)",
-        }}>
-          <I.Plus size={24} color={accent.ink} w={2.25} />
-        </button>
+    // (pinned start buttons, FABs) so it is never clipped or covered. Height
+    // comes purely from the pill's own content — the mobile media query
+    // forces height:auto on .phone-tabbar, so nothing fights it.
+    <div className="phone-tabbar" style={{ position: "relative", zIndex: 55, flexShrink: 0, background: TOK.bg, paddingTop: 10, paddingBottom: 22, display: "flex" }}>
+      <div style={{ position: "relative", flex: 1, margin: "0 14px", height: 64, borderRadius: 22, background: TOK.surface, border: `1px solid ${TOK.border}`, boxShadow: `0 16px 36px ${TOK.shadow}`, display: "flex", alignItems: "center" }}>
+        {tabBtn(tabs[0])}
+        {tabBtn(tabs[1])}
+        {/* center add FAB — pokes above the pill */}
+        <div style={{ width: 70, flexShrink: 0, height: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}>
+          <button onClick={onAdd} aria-label={addOpen ? "Schließen" : "Hinzufügen"} style={{
+            width: 54, height: 54, borderRadius: 999, background: accent.hex, color: accent.ink, border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", marginTop: -30,
+            boxShadow: `0 10px 26px ${TOK.shadow}, 0 0 20px var(--c-shadow-glow), 0 3px 8px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
+            transform: addOpen ? "rotate(45deg)" : "rotate(0deg)", transition: "transform 220ms cubic-bezier(0.22,1,0.36,1)",
+          }}>
+            <I.Plus size={24} color={accent.ink} w={2.25} />
+          </button>
+        </div>
+        {tabBtn(tabs[2])}
+        {tabBtn(tabs[3])}
       </div>
-      {tabBtn(tabs[2])}
-      {tabBtn(tabs[3])}
     </div>
   );
 }
@@ -587,13 +603,18 @@ const iconBtn: React.CSSProperties = { width: 36, height: 36, borderRadius: 8, b
 export function ScreenHeader({ back, onBack, title, trailing, large = false }: { back?: boolean; onBack?: () => void; title?: React.ReactNode; trailing?: React.ReactNode; large?: boolean }) {
   if (large) {
     return (
-      <div style={{ padding: "8px 16px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ padding: "8px 16px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", alignItems: "center", minHeight: 36 }}>
           {back && <button onClick={onBack} style={iconBtn} aria-label="Zurück"><I.ChevL size={20} color={TOK.text} /></button>}
           <div style={{ flex: 1 }} />
           {trailing}
         </div>
-        {title && <div style={{ ...TYPE.h1, color: TOK.text, padding: "4px 0 0" }}>{title}</div>}
+        {title && (
+          <div style={{ padding: "4px 0 0" }}>
+            <div style={{ ...TYPE.h1, fontSize: 32, color: TOK.text }}>{title}</div>
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--c-primary)", marginTop: 8 }} />
+          </div>
+        )}
       </div>
     );
   }
