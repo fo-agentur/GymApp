@@ -20,12 +20,13 @@ import {
   fetchRecentExerciseIds,
   fetchProfile,
 } from "@/lib/data";
-import type { WorkoutSession, Exercise } from "@/lib/supabase/types";
-import { TOK, Tnum, I, Sheet, fmtW, mmss, epley1rm, rirColor } from "@/lib/design";
+import type { Exercise } from "@/lib/supabase/types";
+import { TOK, TYPE, Tnum, I, Sheet, fmtW, mmss, epley1rm, rirColor, FONT_DISPLAY } from "@/lib/design";
 import { loadExerciseDB, type ExInfo } from "@/lib/exercise-db";
 import MuscleMap from "../MuscleMap";
 import type { MuscleGroup } from "@/lib/muscles";
 import ExercisePicker from "./ExercisePicker";
+import { loadActiveWorkout, saveActiveWorkout, clearActiveWorkout } from "@/lib/active-workout";
 
 export type SetType = "normal" | "warmup" | "drop" | "failure" | "myorep" | "partial";
 
@@ -64,7 +65,9 @@ type Focus = { setId: string; field: "weight" | "reps" | "rir" } | null;
 
 export default function Workout() {
   const { db, userId, accent, exMap, exercises, workoutConfig, endWorkout, myEquipment } = useApp();
-  const [session, setSession] = React.useState<WorkoutSession | null>(null);
+  // Only `.id` is ever used off the session row — a minimal local shape lets
+  // a resumed session be reconstructed without refetching it from Supabase.
+  const [session, setSession] = React.useState<{ id: string } | null>(null);
   const [exs, setExs] = React.useState<WEx[]>([]);
   const [currentKey, setCurrentKey] = React.useState<string | null>(null);
   const [elapsed, setElapsed] = React.useState(0);
@@ -89,6 +92,9 @@ export default function Workout() {
   const [barWeight, setBarWeight] = React.useState(20);
   const defaultRestRef = React.useRef(120);
   const startedRef = React.useRef(false);
+  // True right after a cell is tapped, until the first digit/backspace is
+  // entered — see focusCell/typeDigit.
+  const freshFocusRef = React.useRef(false);
 
   React.useEffect(() => {
     fetchRecentExerciseIds(db).then(setRecentIds).catch(() => {});
@@ -103,11 +109,26 @@ export default function Workout() {
       .catch(() => {});
   }, [db, userId]);
 
-  // Create session + build exercises once.
+  // Create session + build exercises once — unless a session was already
+  // running (app reloaded / closed mid-workout), in which case rebuild the
+  // exact same in-progress state from the saved snapshot instead of starting
+  // a second session for the same workout.
   React.useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
     (async () => {
+      const snap = loadActiveWorkout(userId);
+      if (snap) {
+        setSession({ id: snap.sessionId });
+        setExs(snap.exs as WEx[]);
+        setCurrentKey(snap.currentKey);
+        setBarWeight(snap.barWeight);
+        defaultRestRef.current = snap.defaultRest;
+        startTsRef.current = snap.startTs;
+        if (snap.restTimer && snap.restTimer.endsAt > Date.now()) setRestTimer(snap.restTimer);
+        setReady(true);
+        return;
+      }
       const s = await startSession(db, userId, {
         routineId: workoutConfig?.routineId ?? null,
         name: workoutConfig?.name ?? "Workout",
@@ -130,6 +151,23 @@ export default function Workout() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Snapshot the in-progress workout on every change so a reload/relaunch can
+  // rebuild this exact screen (see lib/active-workout.ts).
+  React.useEffect(() => {
+    if (!ready || !session) return;
+    saveActiveWorkout({
+      userId,
+      sessionId: session.id,
+      workoutConfig: { routineId: workoutConfig?.routineId ?? null, name: workoutConfig?.name ?? "Workout" },
+      startTs: startTsRef.current,
+      barWeight,
+      defaultRest: defaultRestRef.current,
+      currentKey,
+      exs,
+      restTimer,
+    });
+  }, [ready, session, userId, workoutConfig, barWeight, currentKey, exs, restTimer]);
 
   async function buildEx(ex: Exercise, targetSets = 3, repsMin: number | null = 8, repsMax: number | null = null, targetRir: number | null = 2, rest?: number): Promise<WEx> {
     const loMin = repsMin ?? 8;
@@ -259,13 +297,23 @@ export default function Workout() {
     const set = current?.sets.find((s) => s.localId === setId);
     const v = set ? (field === "weight" ? set.weight : field === "reps" ? set.reps : set.rir) : null;
     setBuffer(v != null ? String(fmtW(v)) : "");
+    // The pre-filled suggestion is shown for reference, but the first digit
+    // typed should replace it outright rather than being appended to it —
+    // otherwise tapping a "50" cell and typing "6" produces "506".
+    freshFocusRef.current = true;
   }
 
   function typeDigit(d: string) {
     if (!focus) return;
-    const next = buffer + d;
     if (focus.field !== "weight" && d === ".") return;
-    if (d === "." && buffer.includes(".")) return;
+    let next: string;
+    if (freshFocusRef.current) {
+      next = d === "." ? "0." : d;
+    } else {
+      if (d === "." && buffer.includes(".")) return;
+      next = buffer + d;
+    }
+    freshFocusRef.current = false;
     if (next.length > 6) return;
     setBuffer(next);
     const num = parseFloat(next);
@@ -274,10 +322,24 @@ export default function Workout() {
 
   function backspace() {
     if (!focus) return;
+    freshFocusRef.current = false;
     const next = buffer.slice(0, -1);
     setBuffer(next);
     const num = parseFloat(next);
     patchSet(focus.setId, { [focus.field]: next === "" || Number.isNaN(num) ? null : num } as Partial<WSet>);
+  }
+
+  // Quick plate-increment step (±1.25/2.5/5 kg) — for a home rig where you
+  // load plates by hand yourself, nudging by a real plate size is faster than
+  // typing a whole new number on the keypad.
+  function stepWeight(delta: number) {
+    if (!focus || focus.field !== "weight") return;
+    const set = current?.sets.find((s) => s.localId === focus.setId);
+    const base = set?.weight ?? current?.suggestion.weight ?? 0;
+    const next = Math.max(0, +(base + delta).toFixed(2));
+    freshFocusRef.current = false;
+    setBuffer(fmtW(next));
+    patchSet(focus.setId, { weight: next });
   }
 
   function setRir(setId: string, value: number) {
@@ -420,6 +482,7 @@ export default function Workout() {
     setFinishing(true);
     if (doneSets === 0) {
       await discardSession(db, session.id);
+      clearActiveWorkout();
       endWorkout("today");
       return;
     }
@@ -429,6 +492,7 @@ export default function Workout() {
       duration_seconds: elapsed,
       notes: null,
     });
+    clearActiveWorkout();
     const prs: { name: string; weight: number }[] = [];
     const muscleSets: Partial<Record<MuscleGroup, number>> = {};
     for (const e of exs) {
@@ -454,6 +518,7 @@ export default function Workout() {
     if (!session) return endWorkout("today");
     if (doneSets === 0) {
       await discardSession(db, session.id);
+      clearActiveWorkout();
       return endWorkout("today");
     }
     setExitPrompt(true);
@@ -461,11 +526,13 @@ export default function Workout() {
   async function exitSave() {
     if (!session) return endWorkout("today");
     await finishSession(db, session.id, { total_volume_kg: Math.round(volume * 100) / 100, total_sets: doneSets, duration_seconds: elapsed, notes: null });
+    clearActiveWorkout();
     endWorkout("history");
   }
   async function exitDiscard() {
     if (!session) return endWorkout("today");
     await discardSession(db, session.id);
+    clearActiveWorkout();
     endWorkout("today");
   }
 
@@ -482,7 +549,7 @@ export default function Workout() {
           <button onClick={exitWorkout} style={{ ...iconBtn }} aria-label="Beenden">
             <I.ChevL size={22} color={TOK.text} />
           </button>
-          <Tnum style={{ fontSize: 17, fontWeight: 700, color: TOK.text, letterSpacing: "-0.01em" }}>{hhmmss(elapsed)}</Tnum>
+          <Tnum style={{ ...TYPE.mega, fontSize: 20, color: TOK.text }}>{hhmmss(elapsed)}</Tnum>
           <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 999, background: restTimer ? TOK.accentSoft : "transparent" }}>
             <I.History size={15} color={restTimer ? TOK.accent : TOK.dim} />
             <Tnum style={{ fontSize: 14, fontWeight: 700, color: restTimer ? TOK.accent : TOK.dim }}>{restTimer ? mmss(Math.max(0, restTimer.remaining)) : "0:00"}</Tnum>
@@ -593,6 +660,7 @@ export default function Workout() {
                 onPartial={() => { patchSet(focus.setId, { setType: "partial" }); }}
                 onCollapse={() => setFocus(null)}
                 onConfirm={() => commitRow(focus.setId)}
+                onStep={stepWeight}
               />
             ) : (
               <div style={{ padding: "8px 12px 22px", flexShrink: 0, background: TOK.bg, borderTop: `1px solid ${TOK.border}` }}>
@@ -766,15 +834,27 @@ function Cell({ value, focused, done, onTap }: { value: number | null; focused: 
 
 // ── Custom numeric keypad ───────────────────────────────────────
 const RIR_DOTS = [0, 1, 2, 3, 4, 5, 6];
-function Keypad({ field, rir, accentHex, accentInk, onDigit, onBackspace, onRir, onRirMode, onFailure, onPartial, onCollapse, onConfirm }: {
+function Keypad({ field, rir, accentHex, accentInk, onDigit, onBackspace, onRir, onRirMode, onFailure, onPartial, onCollapse, onConfirm, onStep }: {
   field: "weight" | "reps" | "rir"; rir: number | null; accentHex: string; accentInk: string;
   onDigit: (d: string) => void; onBackspace: () => void; onRir: (v: number) => void; onRirMode: () => void;
-  onFailure: () => void; onPartial: () => void; onCollapse: () => void; onConfirm: () => void;
+  onFailure: () => void; onPartial: () => void; onCollapse: () => void; onConfirm: () => void; onStep: (delta: number) => void;
 }) {
   const key: React.CSSProperties = { height: 52, borderRadius: 12, background: TOK.surface, border: `1px solid ${TOK.border}`, color: TOK.text, fontFamily: "inherit", fontSize: 22, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", WebkitTapHighlightColor: "transparent" };
   const sideKey: React.CSSProperties = { ...key, fontSize: 14, fontWeight: 700, background: TOK.surface2 };
+  const stepKey: React.CSSProperties = { flex: 1, height: 34, borderRadius: 9, background: TOK.surface2, border: `1px solid ${TOK.border}`, color: TOK.text, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", WebkitTapHighlightColor: "transparent" };
   return (
     <div style={{ flexShrink: 0, background: TOK.bg, borderTop: `1px solid ${TOK.border}`, padding: "10px 10px 18px" }}>
+      {/* Plate-loading quick steps — nudge by an actual plate size instead of
+          retyping the whole number (handy when you load plates by hand). */}
+      {field === "weight" && (
+        <div style={{ display: "flex", gap: 5, padding: "0 2px 8px" }}>
+          {[-5, -2.5, -1.25, 1.25, 2.5, 5].map((d) => (
+            <button key={d} onClick={() => onStep(d)} style={stepKey}>
+              <span className="tnum">{d > 0 ? `+${d}` : d}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {/* RIR dot scale */}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 4, padding: "0 2px 10px" }}>
         {RIR_DOTS.map((v) => {
@@ -826,7 +906,7 @@ function WorkoutComplete({ data, accentHex, onClose }: {
     <div style={{ position: "absolute", inset: 0, zIndex: 100, background: TOK.bg, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", padding: "10px 8px", minHeight: 52 }}>
         <button onClick={onClose} style={iconBtn} aria-label="Schließen"><I.X size={22} color={TOK.text} /></button>
-        <div style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: 700, color: TOK.text }}>Workout abgeschlossen</div>
+        <div style={{ ...TYPE.h1, flex: 1, textAlign: "center", fontSize: 19, color: TOK.text }}>Workout abgeschlossen</div>
         <div style={{ width: 36 }} />
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 16px 16px" }}>
@@ -845,8 +925,8 @@ function WorkoutComplete({ data, accentHex, onClose }: {
             <div style={{ fontSize: 13, fontWeight: 800, color: TOK.text, margin: "18px 2px 8px" }}>Neue Rekorde 🏆</div>
             <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
               {data.prs.slice(0, 6).map((p, i) => (
-                <div key={i} style={{ flexShrink: 0, minWidth: 150, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 14, padding: "12px 14px" }}>
-                  <Tnum style={{ fontSize: 20, fontWeight: 800, color: accentHex, letterSpacing: "-0.02em" }}>{fmtW(p.weight)}<span style={{ fontSize: 12, color: TOK.muted, marginLeft: 3 }}>kg</span></Tnum>
+                <div key={i} className="gym-pop" style={{ flexShrink: 0, minWidth: 150, background: TOK.surface, border: "1.5px solid var(--c-pr)", boxShadow: "0 0 20px rgba(46, 230, 184, 0.18)", borderRadius: 14, padding: "12px 14px" }}>
+                  <Tnum style={{ ...TYPE.mega, fontSize: 24, color: "var(--c-pr)" }}>{fmtW(p.weight)}<span style={{ fontFamily: FONT_DISPLAY, fontSize: 12, color: TOK.muted, marginLeft: 3 }}>kg</span></Tnum>
                   <div style={{ fontSize: 11, color: "var(--c-pr)", fontWeight: 700, marginTop: 2 }}>Neuer Rekord</div>
                   <div style={{ fontSize: 12, color: TOK.muted, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
                 </div>
@@ -865,7 +945,7 @@ function Summary({ label, value, unit }: { label: string; value: string; unit: s
   return (
     <div style={{ background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 14, padding: "12px 8px", textAlign: "center" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 3 }}>
-        <Tnum style={{ fontSize: 20, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em" }}>{value}</Tnum>
+        <Tnum style={{ ...TYPE.mega, fontSize: 22, color: TOK.text }}>{value}</Tnum>
         {unit && <span style={{ fontSize: 11, color: TOK.muted, fontWeight: 600 }}>{unit}</span>}
       </div>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: TOK.dim, marginTop: 4 }}>{label}</div>
@@ -944,10 +1024,10 @@ function RestTimerBar({ timer, accentHex, accentInk, onAdjust, onSkip }: { timer
   const done = timer.remaining <= 0;
   const pct = timer.total > 0 ? Math.max(0, Math.min(1, timer.remaining / timer.total)) : 0;
   return (
-    <div style={{ flexShrink: 0, margin: "0 12px 8px", background: TOK.surface, borderRadius: 18, padding: "12px 14px 14px", boxShadow: `0 8px 24px ${TOK.shadow}`, border: `1px solid ${done ? "var(--c-pr)" : TOK.border}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
+    <div className={done ? "gym-glow" : undefined} style={{ flexShrink: 0, margin: "0 12px 8px", background: TOK.surface, borderRadius: 18, padding: "12px 14px 14px", boxShadow: `0 8px 24px ${TOK.shadow}`, border: `1px solid ${done ? "var(--c-pr)" : TOK.border}`, animation: "gymUp 280ms cubic-bezier(0.22,1,0.36,1)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: done ? "var(--c-pr)" : accentHex }}>{done ? "Pause vorbei" : "Pause"}</span>
-        <Tnum style={{ fontSize: 24, fontWeight: 800, color: TOK.text, letterSpacing: "-0.02em" }}>{mmss(Math.max(0, timer.remaining))}</Tnum>
+        <Tnum style={{ ...TYPE.mega, fontSize: 22, color: TOK.text }}>{mmss(Math.max(0, timer.remaining))}</Tnum>
       </div>
       <div style={{ height: 6, borderRadius: 999, background: TOK.surface2, overflow: "hidden", marginBottom: 10 }}>
         <div style={{ height: "100%", width: `${pct * 100}%`, background: done ? "var(--c-pr)" : accentHex, borderRadius: 999, transition: "width 1s linear" }} />

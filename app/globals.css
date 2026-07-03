@@ -1,90 +1,96 @@
 /* ── Theme tokens (CSS variables) ──────────────────────────────────
-   MacroFactor Workouts identity (Pentagram rebrand): light-first, high-contrast
-   black/white with a single coral-orange brand accent. Light is the default
-   (:root); dark is a neutral charcoal under [data-theme="dark"].
+   "IRON" identity (v3 redesign): dark-forged, high-energy — near-black steel
+   surfaces, a single electric-lime primary that carries every call-to-action,
+   and an ember accent for secondary emphasis (RIR badges, highlights). Dark
+   is the default (:root) — this is a gym app, used in a gym, often at 6am or
+   under bad lighting; light is available under [data-theme="light"] for
+   daytime use but the identity is designed dark-first.
    Key semantics:
-   - --c-primary = neutral button colour (BLACK on light / WHITE on dark). Drives
-     the solid "Start Workout" / "Done" pills, exactly like the real app.
-   - --c-accent  = the coral-orange brand highlight (charts, active states, RIR
-     target badges, links). It is NOT the button colour.
-   - --c-rir-*   = the Reps-in-Reserve colour scale (0 red → 6+ blue) shown as
-     coloured dots on every logged set.
-   lib/design.tsx maps TOK.* / MACRO.* / SET.* to these vars, so the whole app
-   re-skins from here — no component edits needed to flip the theme. */
+   - --c-primary = the lime brand colour. Drives every solid CTA ("Training
+     starten", the tab-bar +, checkmarks, the finish-workout button).
+   - --c-accent  = ember-orange secondary highlight (RIR target badges,
+     nutrition widget, "Nächstes Training" eyebrow). Never the button colour.
+   - --c-pr      = teal, reserved for personal-record moments so a new record
+     never gets lost among the lime CTAs.
+   - --c-rir-*   = the Reps-in-Reserve colour scale (0 red/hard → 6+ teal/easy).
+   lib/design.tsx maps TOK.* / SET.* to these vars, so the whole app re-skins
+   from here — no component edits needed to flip the theme. */
 :root,
-[data-theme="light"] {
-  color-scheme: light;
-  --c-bg: #f6f6f7;
-  --c-surface: #ffffff;
-  --c-surface2: #efeff1;
-  --c-surface3: #e4e4e7;
-  --c-border: #e6e6e9;
-  --c-text: #0a0a0b;
-  --c-muted: #6b6b73;
-  --c-dim: #a1a1a9;
-  --c-primary: #0a0a0b;
-  --c-primary-ink: #ffffff;
-  --c-primary-soft: rgba(10, 10, 11, 0.05);
-  --c-accent: #f26430;
-  --c-accent-ink: #ffffff;
-  --c-accent-soft: rgba(242, 100, 48, 0.12);
-  --c-muscle: #2f6bff;
-  --c-muscle-rgb: 47, 107, 255;
-  --c-fail: #e5484d;
-  --c-pr: #1f9d52;
-  --c-set-warmup: #e08a17;
-  --c-set-drop: #8b3df0;
-  --c-set-failure: #e5484d;
-  --c-set-myorep: #1aa6a6;
-  --c-set-partial: #1faf63;
-  /* Reps-in-Reserve scale: 0 hard (red) → 6+ easy (blue) */
-  --c-rir-0: #e5484d;
-  --c-rir-1: #f26430;
-  --c-rir-2: #f5a623;
-  --c-rir-3: #e0a100;
-  --c-rir-4: #2fb85c;
-  --c-rir-5: #1e9e4a;
-  --c-rir-6: #3b82f6;
-  --c-rir-x: #9a9aa2;
-  --c-shadow: rgba(18, 18, 28, 0.10);
-  --c-stage: #ececee;
-}
-
 [data-theme="dark"] {
   color-scheme: dark;
-  --c-bg: #0f0f12;
-  --c-surface: #1a1a1e;
-  --c-surface2: #232328;
-  --c-surface3: #2d2d33;
-  --c-border: #2a2a30;
-  --c-text: #fafafa;
-  --c-muted: #a0a0a8;
-  --c-dim: #66666e;
-  --c-primary: #fafafa;
-  --c-primary-ink: #0a0a0b;
-  --c-primary-soft: rgba(255, 255, 255, 0.08);
-  --c-accent: #f2683c;
-  --c-accent-ink: #0a0a0b;
-  --c-accent-soft: rgba(242, 104, 60, 0.16);
-  --c-muscle: #4d86ff;
-  --c-muscle-rgb: 77, 134, 255;
-  --c-fail: #ff5c5c;
-  --c-pr: #34d27e;
-  --c-set-warmup: #ffb020;
-  --c-set-drop: #b06cff;
-  --c-set-failure: #ff5c5c;
-  --c-set-myorep: #2ed3d3;
-  --c-set-partial: #54d18a;
-  --c-rir-0: #ff5c5c;
-  --c-rir-1: #f2683c;
-  --c-rir-2: #f5b53a;
-  --c-rir-3: #e9b400;
-  --c-rir-4: #34d27e;
-  --c-rir-5: #28b86a;
-  --c-rir-6: #4d86ff;
-  --c-rir-x: #7a7a82;
-  --c-shadow: rgba(0, 0, 0, 0.5);
-  --c-stage: #050506;
+  --c-bg: #0a0a0c;
+  --c-surface: #16161a;
+  --c-surface2: #1f1f25;
+  --c-surface3: #2a2a32;
+  --c-border: #28282f;
+  --c-text: #f5f6f2;
+  --c-muted: #9d9da6;
+  --c-dim: #5c5c66;
+  --c-primary: #c6ff3d;
+  --c-primary-ink: #0a0a0c;
+  --c-primary-soft: rgba(198, 255, 61, 0.14);
+  --c-accent: #ff5a36;
+  --c-accent-ink: #0a0a0c;
+  --c-accent-soft: rgba(255, 90, 54, 0.16);
+  --c-muscle: #3fa9f5;
+  --c-muscle-rgb: 63, 169, 245;
+  --c-fail: #ff4d4d;
+  --c-pr: #2ee6b8;
+  --c-set-warmup: #ff9f1c;
+  --c-set-drop: #a06bff;
+  --c-set-failure: #ff4d4d;
+  --c-set-myorep: #2ee6b8;
+  --c-set-partial: #8be04f;
+  /* Reps-in-Reserve scale: 0 hard (red) → 6+ easy (teal) */
+  --c-rir-0: #ff4d4d;
+  --c-rir-1: #ff5a36;
+  --c-rir-2: #ff9f1c;
+  --c-rir-3: #ffd23f;
+  --c-rir-4: #c6ff3d;
+  --c-rir-5: #6be675;
+  --c-rir-6: #2ee6b8;
+  --c-rir-x: #6b6b73;
+  --c-shadow: rgba(0, 0, 0, 0.55);
+  --c-shadow-glow: rgba(198, 255, 61, 0.28);
+  --c-stage: #000000;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --c-bg: #f6f7f2;
+  --c-surface: #ffffff;
+  --c-surface2: #edefe6;
+  --c-surface3: #e1e3d8;
+  --c-border: #e1e3d8;
+  --c-text: #0b0c09;
+  --c-muted: #63646a;
+  --c-dim: #9d9e98;
+  --c-primary: #a9d62c;
+  --c-primary-ink: #0a0a0c;
+  --c-primary-soft: rgba(169, 214, 44, 0.16);
+  --c-accent: #e6491f;
+  --c-accent-ink: #ffffff;
+  --c-accent-soft: rgba(230, 73, 31, 0.12);
+  --c-muscle: #2f6bff;
+  --c-muscle-rgb: 47, 107, 255;
+  --c-fail: #d93636;
+  --c-pr: #0f9d7c;
+  --c-set-warmup: #d9840f;
+  --c-set-drop: #7c3ce0;
+  --c-set-failure: #d93636;
+  --c-set-myorep: #0f9d7c;
+  --c-set-partial: #5ea62c;
+  --c-rir-0: #d93636;
+  --c-rir-1: #e6491f;
+  --c-rir-2: #e08a17;
+  --c-rir-3: #cf9c00;
+  --c-rir-4: #7ca82a;
+  --c-rir-5: #3fa15a;
+  --c-rir-6: #0f9d7c;
+  --c-rir-x: #9a9aa2;
+  --c-shadow: rgba(18, 18, 28, 0.12);
+  --c-shadow-glow: rgba(169, 214, 44, 0.22);
+  --c-stage: #dfe1d6;
 }
 
 html,
@@ -232,8 +238,13 @@ textarea {
   0% { transform: translateY(0) rotate(0deg); opacity: 1; }
   100% { transform: translateY(900px) rotate(540deg); opacity: 0; }
 }
+@keyframes gymGlowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--c-shadow-glow); }
+  50% { box-shadow: 0 0 22px 4px var(--c-shadow-glow); }
+}
 .gym-fade { animation: gymFade 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .gym-pop { animation: gymPop 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.gym-glow { animation: gymGlowPulse 1900ms ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

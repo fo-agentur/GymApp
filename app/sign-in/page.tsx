@@ -3,7 +3,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usernameToEmail, validateUsername, validatePassword } from "@/lib/username";
-import { TOK, TYPE, ACCENT, Btn, FONT_DISPLAY } from "@/lib/design";
+import { TOK, TYPE, ACCENT, Btn, FONT_IMPACT } from "@/lib/design";
 import { IllOrbit } from "@/lib/illustrations";
 
 export default function SignInPage() {
@@ -100,7 +100,7 @@ export default function SignInPage() {
                 <IllOrbit size={88} />
               </div>
               <div style={{ ...TYPE.eyebrow, color: TOK.accent, marginBottom: 8, letterSpacing: "0.14em" }}>TRAINING</div>
-              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 42, fontWeight: 800, color: TOK.text, letterSpacing: "-0.035em", lineHeight: 1 }}>
+              <div style={{ fontFamily: FONT_IMPACT, fontSize: 46, fontWeight: 400, color: TOK.text, letterSpacing: "0.01em", lineHeight: 1, textTransform: "uppercase" }}>
                 GymApp
               </div>
               <div style={{ fontSize: 13, color: TOK.dim, marginTop: 14, letterSpacing: "-0.01em" }}>

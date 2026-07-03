@@ -33,9 +33,11 @@ export function parseEquipment(json: unknown): EquipmentId[] {
   return [];
 }
 
-// A fully equipped multipress = smith machine + dual cable pulleys + bench:
-// every smith-machine movement plus all cable work (pulldowns, rows, curls,
-// pushdowns, flys, face pulls, …). Bodyweight is always possible.
+// A fully equipped multipress = guided (Smith-style) barbell + dual cable
+// pulleys + bench, with plates loaded on by hand: every barbell movement
+// (bench, squat, row, OHP — the guided bar swaps in for a free bar) plus all
+// cable work (pulldowns, rows, curls, pushdowns, flys, face pulls, …).
+// Bodyweight is always possible.
 const SMITH_RE = /smith/i;
 
 export function matchesEquipment(ex: Pick<Exercise, "category" | "name">, items: EquipmentId[]): boolean {
@@ -44,7 +46,7 @@ export function matchesEquipment(ex: Pick<Exercise, "category" | "name">, items:
   if (items.includes("dumbbell") && ex.category === "dumbbell") return true;
   if (items.includes("barbell") && ex.category === "barbell") return true;
   if (items.includes("machines") && ex.category === "machine") return true;
-  if (items.includes("multipress") && (ex.category === "cable" || SMITH_RE.test(ex.name))) return true;
+  if (items.includes("multipress") && (ex.category === "cable" || ex.category === "barbell" || SMITH_RE.test(ex.name))) return true;
   return false;
 }
 

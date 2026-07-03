@@ -84,8 +84,8 @@ export default function Today() {
 
       {/* Next training — primary CTA */}
       {hero && (
-        <div style={{ marginTop: 16, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "18px 16px 16px", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: accent.hex, opacity: 0.9 }} />
+        <div style={{ marginTop: 16, background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 20, padding: "18px 16px 16px", position: "relative", overflow: "hidden", boxShadow: "0 0 32px var(--c-shadow-glow)" }}>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: accent.hex }} />
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
             <div style={{ ...TYPE.eyebrow, color: TOK.accent }}>Nächstes Training</div>
             <Tnum style={{ fontSize: 12, color: TOK.dim }}>

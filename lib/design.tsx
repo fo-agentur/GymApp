@@ -48,22 +48,29 @@ export function rirColor(rir: number | null | undefined): string {
   return `var(--c-rir-${r})`;
 }
 
-// Display typeface — Hanken Grotesk stands in for the proprietary "Macro Sans".
-// Body text uses the same family (set on <body>), so headlines differ only by
-// weight + tracking, matching MacroFactor's single-typeface system.
+// Body/UI typeface — clean and legible for lists, forms, running text.
 export const FONT_DISPLAY = '"Hanken Grotesk", -apple-system, "Segoe UI", system-ui, sans-serif';
+// Impact typeface — a tall, condensed, already-bold face used ONLY for screen
+// titles, the home greeting and hero numbers (elapsed clock, PR weights,
+// workout summary stats). It's what gives the app its "gym poster" edge
+// instead of reading like a single-typeface macro-tracking app; everywhere
+// else stays on FONT_DISPLAY for legibility.
+export const FONT_IMPACT = '"Anton", "Hanken Grotesk", -apple-system, sans-serif';
 
 export type Accent = { hex: string; name: string; ink: string };
-// Neutral primary: white on dark, black on light. MacroFactor uses a neutral
-// primary for buttons + active states; the macro colours carry the meaning.
-// Kept as an object because many components accept an `accent` prop.
+// Lime primary: the one brand colour, carries every CTA (Start/Finish/+ tab
+// button/checkmarks). Kept as an object because many components accept an
+// `accent` prop.
 export const ACCENT: Accent = { hex: "var(--c-primary)", name: "Primary", ink: "var(--c-primary-ink)" };
 export const ACCENTS: Record<string, Accent> = { primary: ACCENT };
 
 export const TYPE: Record<string, React.CSSProperties> = {
-  display: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.04 },
-  h1: { fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.08 },
+  display: { fontFamily: FONT_IMPACT, fontSize: 36, fontWeight: 400, letterSpacing: "0.005em", lineHeight: 1.02, textTransform: "uppercase" },
+  h1: { fontFamily: FONT_IMPACT, fontSize: 27, fontWeight: 400, letterSpacing: "0.01em", lineHeight: 1.08, textTransform: "uppercase" },
   h2: { fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.15 },
+  // Reserved for the handful of "look at this number" moments: the live
+  // elapsed clock, workout-complete stats, PR weights.
+  mega: { fontFamily: FONT_IMPACT, fontWeight: 400, letterSpacing: "0.01em", lineHeight: 1 },
   cardTitle: { fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", lineHeight: 1.2 },
   body: { fontSize: 14, fontWeight: 500, letterSpacing: "-0.005em", lineHeight: 1.4 },
   bodyEm: { fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.3 },
@@ -358,7 +365,7 @@ export function FAB({ children, onClick, accent = ACCENT }: { children?: React.R
       position: "absolute", right: 16, bottom: 24, zIndex: 40, height: 52, minWidth: 52, borderRadius: 999, padding: "0 18px",
       background: accent.hex, color: accent.ink, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600,
       letterSpacing: "-0.01em", cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
-      boxShadow: `0 14px 34px ${TOK.shadow}, 0 6px 14px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
+      boxShadow: `0 14px 34px ${TOK.shadow}, 0 0 26px var(--c-shadow-glow), 0 6px 14px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
     }}>{children}</button>
   );
 }
@@ -564,7 +571,7 @@ export function TabBar({ active, onChange, onAdd, addOpen, accent = ACCENT }: { 
         <button onClick={onAdd} aria-label={addOpen ? "Schließen" : "Hinzufügen"} style={{
           width: 54, height: 54, borderRadius: 999, background: accent.hex, color: accent.ink, border: "none", cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", marginTop: -20,
-          boxShadow: `0 10px 26px ${TOK.shadow}, 0 3px 8px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
+          boxShadow: `0 10px 26px ${TOK.shadow}, 0 0 20px var(--c-shadow-glow), 0 3px 8px rgba(0,0,0,0.35)`, WebkitTapHighlightColor: "transparent",
           transform: addOpen ? "rotate(45deg)" : "rotate(0deg)", transition: "transform 220ms cubic-bezier(0.22,1,0.36,1)",
         }}>
           <I.Plus size={24} color={accent.ink} w={2.25} />

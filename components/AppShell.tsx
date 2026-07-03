@@ -6,6 +6,7 @@ import { fetchExercises, fetchProfile, fetchRoutines, type RoutineFull } from "@
 import type { Exercise } from "@/lib/supabase/types";
 import { parseEquipment, type EquipmentId } from "@/lib/equipment";
 import { applyTheme, normalizeTheme, watchSystemTheme } from "@/lib/theme";
+import { loadActiveWorkout } from "@/lib/active-workout";
 import { ACCENT, Phone, TabBar, Sheet, TOK, TYPE, Tnum, I, type TabId } from "@/lib/design";
 import { AppContext, type AppCtxValue, type ScreenId, type ScreenParams, type WorkoutConfig } from "./app-context";
 
@@ -89,6 +90,15 @@ export default function AppShell({ userId, username }: { userId: string; usernam
     reloadExercises();
     reloadProfile();
   }, [reloadExercises, reloadProfile]);
+
+  // Reopen the live-workout overlay if a session was left running (app killed
+  // or reloaded mid-workout) — Workout.tsx picks the rest of the state back
+  // up from the same snapshot instead of starting a fresh session.
+  React.useEffect(() => {
+    const snap = loadActiveWorkout(userId);
+    if (snap) setWorkoutConfig(snap.workoutConfig);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // "System" theme follows the OS while the app is open.
   React.useEffect(() => watchSystemTheme(), []);
